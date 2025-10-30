@@ -1,0 +1,10 @@
+export enum EntityCategory {
+  RESTAURANT = 'RESTAURANT',
+  HOTEL = 'HOTEL',
+  GAS_STATION = 'GAS_STATION',
+  SUPERMARKET = 'SUPERMARKET',
+  CAFE = 'CAFE',
+  BAR = 'BAR',
+  FAST_FOOD = 'FAST_FOOD',
+  OTHER = 'OTHER',
+}

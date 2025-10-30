@@ -1,0 +1,575 @@
+version: '3.8'
+
+services:
+  # API Gateway
+  api-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        APP_NAME: api-gateway
+    container_name: billme-api-gateway
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - JWT_SECRET=${JWT_SECRET:-billme-secret-key-change-in-production}
+      - JWT_EXPIRATION=24h
+    depends_on:
+      - redis
+      - auth-service
+      - user-service
+      - entity-service
+      - subscription-service
+      - order-service
+      - payment-service
+      - receipt-service
+      - notification-service
+      - audit-service
+      - employee-service
+      - manager-service
+      - menu-service
+      - report-service
+    networks:
+      - billme-network
+    restart: unless-stopped
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: billme-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - billme-network
+    restart: unless-stopped
+
+  # Auth Service
+  auth-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        APP_NAME: auth-service
+    container_name: billme-auth-service
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=development
+      - PORT=3001
+      - MONGODB_URI=mongodb://auth-db:27017/billme-auth
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - JWT_SECRET=${JWT_SECRET:-billme-secret-key-change-in-production}
+      - JWT_EXPIRATION=24h
+      - JWT_REFRESH_EXPIRATION=7d
+      - OTP_EXPIRATION=300
+    depends_on:
+      - auth-db
+      - redis
+    networks:
+      - billme-network
+    restart: unless-stopped
+
+  auth-db:
+    image: mongo:7
+    container_name: billme-auth-db
+    volumes:
+      - auth-db-data:/data/db
+    environment:
+      - MONGO_INITDB_DATABASE=billme-auth
+    networks:
+      - billme-network
+    restart: unless-stopped
+
+  # User Service
+  user-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        APP_NAME: user-service
+    container_name: billme-user-service
+    ports:
+      - "3002:3002"
+    environment:
+      - NODE_ENV=development
+      - PORT=3002
+      - POSTGRES_HOST=user-db
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=billme_user
+      - POSTGRES_PASSWORD=billme_user_pass
+      - POSTGRES_DB=billme_users
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      - user-db
+      - redis
+    networks:
+      - billme-network
+    restart: unless-stopped
+
+  user-db:
+    image: postgres:16-alpine
+    container_name: billme-user-db
+    volumes:
+      - user-db-data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=billme_user
+      - POSTGRES_PASSWORD=billme_user_pass
+      - POSTGRES_DB=billme_users
+    networks:
+      - billme-network
+    restart: unless-stopped
+
+  # Entity Service
+  entity-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        APP_NAME: entity-service
+    container_name: billme-entity-service
+    ports:
+      - "3003:3003"
+    environment:
+      - NODE_ENV=development
+      - PORT=3003
+      - POSTGRES_HOST=entity-db
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=billme_entity
+      - POSTGRES_PASSWORD=billme_entity_pass
+      - POSTGRES_DB=billme_entities
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      - entity-db
+      - redis
+    networks:
+      - billme-network
+    restart: unless-stopped
+
+  entity-db:
+    image: postgres:16-alpine
+    container_name: billme-entity-db
+    volumes:
+      - entity-db-data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=billme_entity
+      - POSTGRES_PASSWORD=billme_entity_pass
+      - POSTGRES_DB=billme_entities
+    networks:
+      - billme-network
+    restart: unless-stopped
+
+  # Subscription Service
+  subscription-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        APP_NAME: subscription-service
+    container_name: billme-subscription-service
+    ports:
+      - "3004:3004"
+    environment:
+      - NODE_ENV=development
+      - PORT=3004
+      - POSTGRES_HOST=subscription-db
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=billme_subscription
+      - POSTGRES_PASSWORD=billme_subscription_pass
+      - POSTGRES_DB=billme_subscriptions
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      - subscription-db
+      - redis
+    networks:
+      - billme-network
+    restart: unless-stopped
+
+  subscription-db:
+    image: postgres:16-alpine
+    container_name: billme-subscription-db
+    volumes:
+      - subscription-db-data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=billme_subscription
+      - POSTGRES_PASSWORD=billme_subscription_pass
+      - POSTGRES_DB=billme_subscriptions
+    networks:
+      - billme-network
+    restart: unless-stopped
+
+  # Manager Service
+  manager-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        APP_NAME: manager-service
+    container_name: billme-manager-service
+    ports:
+      - "3005:3005"
+    environment:
+      - NODE_ENV=development
+      - PORT=3005
+      - POSTGRES_HOST=manager-db
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=billme_manager
+      - POSTGRES_PASSWORD=billme_manager_pass
+      - POSTGRES_DB=billme_managers
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      - manager-db
+      - redis
+    networks:
+      - billme-network
+    restart: unless-stopped
+
+  manager-db:
+    image: postgres:16-alpine
+    container_name: billme-manager-db
+    volumes:
+      - manager-db-data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=billme_manager
+      - POSTGRES_PASSWORD=billme_manager_pass
+      - POSTGRES_DB=billme_managers
+    networks:
+      - billme-network
+    restart: unless-stopped
+
+  # Employee Service
+  employee-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        APP_NAME: employee-service
+    container_name: billme-employee-service
+    ports:
+      - "3006:3006"
+    environment:
+      - NODE_ENV=development
+      - PORT=3006
+      - POSTGRES_HOST=employee-db
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=billme_employee
+      - POSTGRES_PASSWORD=billme_employee_pass
+      - POSTGRES_DB=billme_employees
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      - employee-db
+      - redis
+    networks:
+      - billme-network
+    restart: unless-stopped
+
+  employee-db:
+    image: postgres:16-alpine
+    container_name: billme-employee-db
+    volumes:
+      - employee-db-data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=billme_employee
+      - POSTGRES_PASSWORD=billme_employee_pass
+      - POSTGRES_DB=billme_employees
+    networks:
+      - billme-network
+    restart: unless-stopped
+
+  # Menu Service
+  menu-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        APP_NAME: menu-service
+    container_name: billme-menu-service
+    ports:
+      - "3007:3007"
+    environment:
+      - NODE_ENV=development
+      - PORT=3007
+      - POSTGRES_HOST=menu-db
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=billme_menu
+      - POSTGRES_PASSWORD=billme_menu_pass
+      - POSTGRES_DB=billme_menus
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      - menu-db
+      - redis
+    networks:
+      - billme-network
+    restart: unless-stopped
+
+  menu-db:
+    image: postgres:16-alpine
+    container_name: billme-menu-db
+    volumes:
+      - menu-db-data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=billme_menu
+      - POSTGRES_PASSWORD=billme_menu_pass
+      - POSTGRES_DB=billme_menus
+    networks:
+      - billme-network
+    restart: unless-stopped
+
+  # Order Service
+  order-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        APP_NAME: order-service
+    container_name: billme-order-service
+    ports:
+      - "3008:3008"
+    environment:
+      - NODE_ENV=development
+      - PORT=3008
+      - POSTGRES_HOST=order-db
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=billme_order
+      - POSTGRES_PASSWORD=billme_order_pass
+      - POSTGRES_DB=billme_orders
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      - order-db
+      - redis
+    networks:
+      - billme-network
+    restart: unless-stopped
+
+  order-db:
+    image: postgres:16-alpine
+    container_name: billme-order-db
+    volumes:
+      - order-db-data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=billme_order
+      - POSTGRES_PASSWORD=billme_order_pass
+      - POSTGRES_DB=billme_orders
+    networks:
+      - billme-network
+    restart: unless-stopped
+
+  # Payment Service
+  payment-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        APP_NAME: payment-service
+    container_name: billme-payment-service
+    ports:
+      - "3009:3009"
+    environment:
+      - NODE_ENV=development
+      - PORT=3009
+      - POSTGRES_HOST=payment-db
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=billme_payment
+      - POSTGRES_PASSWORD=billme_payment_pass
+      - POSTGRES_DB=billme_payments
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      - payment-db
+      - redis
+    networks:
+      - billme-network
+    restart: unless-stopped
+
+  payment-db:
+    image: postgres:16-alpine
+    container_name: billme-payment-db
+    volumes:
+      - payment-db-data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=billme_payment
+      - POSTGRES_PASSWORD=billme_payment_pass
+      - POSTGRES_DB=billme_payments
+    networks:
+      - billme-network
+    restart: unless-stopped
+
+  # Receipt Service
+  receipt-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        APP_NAME: receipt-service
+    container_name: billme-receipt-service
+    ports:
+      - "3010:3010"
+    environment:
+      - NODE_ENV=development
+      - PORT=3010
+      - MONGODB_URI=mongodb://receipt-db:27017/billme-receipts
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      - receipt-db
+      - redis
+    networks:
+      - billme-network
+    restart: unless-stopped
+
+  receipt-db:
+    image: mongo:7
+    container_name: billme-receipt-db
+    volumes:
+      - receipt-db-data:/data/db
+    environment:
+      - MONGO_INITDB_DATABASE=billme-receipts
+    networks:
+      - billme-network
+    restart: unless-stopped
+
+  # Notification Service
+  notification-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        APP_NAME: notification-service
+    container_name: billme-notification-service
+    ports:
+      - "3011:3011"
+    environment:
+      - NODE_ENV=development
+      - PORT=3011
+      - MONGODB_URI=mongodb://notification-db:27017/billme-notifications
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - SMTP_HOST=${SMTP_HOST:-smtp.gmail.com}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASS=${SMTP_PASS}
+      - SMS_API_KEY=${SMS_API_KEY}
+      - SMS_API_URL=${SMS_API_URL}
+    depends_on:
+      - notification-db
+      - redis
+    networks:
+      - billme-network
+    restart: unless-stopped
+
+  notification-db:
+    image: mongo:7
+    container_name: billme-notification-db
+    volumes:
+      - notification-db-data:/data/db
+    environment:
+      - MONGO_INITDB_DATABASE=billme-notifications
+    networks:
+      - billme-network
+    restart: unless-stopped
+
+  # Audit Service
+  audit-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        APP_NAME: audit-service
+    container_name: billme-audit-service
+    ports:
+      - "3012:3012"
+    environment:
+      - NODE_ENV=development
+      - PORT=3012
+      - MONGODB_URI=mongodb://audit-db:27017/billme-audit
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      - audit-db
+      - redis
+    networks:
+      - billme-network
+    restart: unless-stopped
+
+  audit-db:
+    image: mongo:7
+    container_name: billme-audit-db
+    volumes:
+      - audit-db-data:/data/db
+    environment:
+      - MONGO_INITDB_DATABASE=billme-audit
+    networks:
+      - billme-network
+    restart: unless-stopped
+
+  # Report Service
+  report-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        APP_NAME: report-service
+    container_name: billme-report-service
+    ports:
+      - "3013:3013"
+    environment:
+      - NODE_ENV=development
+      - PORT=3013
+      - POSTGRES_HOST=report-db
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=billme_report
+      - POSTGRES_PASSWORD=billme_report_pass
+      - POSTGRES_DB=billme_reports
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      - report-db
+      - redis
+    networks:
+      - billme-network
+    restart: unless-stopped
+
+  report-db:
+    image: postgres:16-alpine
+    container_name: billme-report-db
+    volumes:
+      - report-db-data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=billme_report
+      - POSTGRES_PASSWORD=billme_report_pass
+      - POSTGRES_DB=billme_reports
+    networks:
+      - billme-network
+    restart: unless-stopped
+
+volumes:
+  redis-data:
+  auth-db-data:
+  user-db-data:
+  entity-db-data:
+  subscription-db-data:
+  manager-db-data:
+  employee-db-data:
+  menu-db-data:
+  order-db-data:
+  payment-db-data:
+  receipt-db-data:
+  notification-db-data:
+  audit-db-data:
+  report-db-data:
+
+networks:
+  billme-network:
+    driver: bridge
+
