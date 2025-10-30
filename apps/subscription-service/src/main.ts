@@ -1,20 +1,45 @@
 import { NestFactory } from '@nestjs/core';
-import { MicroserviceOptions, Transport } from '@nestjs/microservices';
-import { SubscriptionModule } from './app.module';
+import { ValidationPipe } from '@nestjs/common';
+import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import { SubscriptionModule } from './subscription.module';
 
 async function bootstrap() {
-  const app = await NestFactory.createMicroservice<MicroserviceOptions>(
-    SubscriptionModule,
-    {
-      transport: Transport.TCP,
-      options: { 
-        host: 'localhost', 
-        port: 3005 
-      }
-    }
+  const app = await NestFactory.create(SubscriptionModule);
+
+  app.setGlobalPrefix('api/v1');
+
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+    }),
   );
-  
-  await app.listen();
-  console.log('Subscription Service running on port 3005');
+
+  app.enableCors({
+    origin: true,
+    credentials: true,
+  });
+
+  const config = new DocumentBuilder()
+    .setTitle('Bill Me - Subscription Service')
+    .setDescription('Subscription and billing management microservice API')
+    .setVersion('1.0')
+    .addBearerAuth()
+    .build();
+
+  const document = SwaggerModule.createDocument(app, config);
+  SwaggerModule.setup('api/docs', app, document);
+
+  const port = process.env.PORT || 3004;
+  await app.listen(port);
+
+  console.log(
+    `🚀 Subscription Service is running on: http://localhost:${port}`,
+  );
+  console.log(
+    `📚 Swagger docs available at: http://localhost:${port}/api/docs`,
+  );
 }
+
 bootstrap();

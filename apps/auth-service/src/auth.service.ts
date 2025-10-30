@@ -5,14 +5,14 @@ import {
   BadRequestException,
   NotFoundException,
 } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
-import { AuthCredential, AuthDocument } from './schemas/auth.schema';
-import { OTP, OTPDocument } from './schemas/otp.schema';
-import { Session, SessionDocument } from './schemas/session.schema';
+import { AuthCredential } from './entities/auth-credential.entity';
+import { OTP, OTPType } from './entities/otp.entity';
+import { Session } from './entities/session.entity';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
@@ -26,12 +26,12 @@ export class AuthService {
   private readonly LOCK_TIME = 15 * 60 * 1000; // 15 minutes
 
   constructor(
-    @InjectModel(AuthCredential.name)
-    private authModel: Model<AuthDocument>,
-    @InjectModel(OTP.name)
-    private otpModel: Model<OTPDocument>,
-    @InjectModel(Session.name)
-    private sessionModel: Model<SessionDocument>,
+    @InjectRepository(AuthCredential)
+    private authRepository: Repository<AuthCredential>,
+    @InjectRepository(OTP)
+    private otpRepository: Repository<OTP>,
+    @InjectRepository(Session)
+    private sessionRepository: Repository<Session>,
     private jwtService: JwtService,
     private configService: ConfigService,
     private httpService: HttpService,
@@ -39,8 +39,8 @@ export class AuthService {
 
   async register(registerDto: RegisterDto) {
     // Check if user already exists in auth service
-    const existingAuth = await this.authModel.findOne({
-      email: registerDto.email,
+    const existingAuth = await this.authRepository.findOne({
+      where: { email: registerDto.email },
     });
 
     if (existingAuth) {
@@ -69,7 +69,7 @@ export class AuthService {
       const passwordHash = await HashUtil.hash(registerDto.password);
 
       // Create auth credentials
-      const authCredential = new this.authModel({
+      const authCredential = this.authRepository.create({
         userId: user.id,
         email: registerDto.email,
         passwordHash,
@@ -81,7 +81,7 @@ export class AuthService {
         },
       });
 
-      await authCredential.save();
+      await this.authRepository.save(authCredential);
 
       // Generate email verification OTP
       await this.generateOTP(user.id, 'EMAIL');
@@ -99,8 +99,8 @@ export class AuthService {
   }
 
   async login(loginDto: LoginDto) {
-    const authCredential = await this.authModel.findOne({
-      email: loginDto.email,
+    const authCredential = await this.authRepository.findOne({
+      where: { email: loginDto.email },
     });
 
     if (!authCredential) {
@@ -108,7 +108,7 @@ export class AuthService {
     }
 
     // Check if account is locked
-    if (authCredential.loginAttempts.locked) {
+    if (authCredential.loginAttempts?.locked) {
       const now = new Date();
       if (now < authCredential.loginAttempts.lockedUntil) {
         throw new UnauthorizedException(`Account is locked. Try again later.`);
@@ -127,6 +127,14 @@ export class AuthService {
 
     if (!isPasswordValid) {
       // Increment login attempts
+      if (!authCredential.loginAttempts) {
+        authCredential.loginAttempts = {
+          count: 0,
+          lastAttempt: new Date(),
+          locked: false,
+          lockedUntil: new Date(),
+        };
+      }
       authCredential.loginAttempts.count += 1;
       authCredential.loginAttempts.lastAttempt = new Date();
 
@@ -137,7 +145,7 @@ export class AuthService {
         );
       }
 
-      await authCredential.save();
+      await this.authRepository.save(authCredential);
       throw new UnauthorizedException('Invalid credentials');
     }
 
@@ -158,8 +166,10 @@ export class AuthService {
     }
 
     // Reset login attempts
-    authCredential.loginAttempts.count = 0;
-    authCredential.loginAttempts.locked = false;
+    if (authCredential.loginAttempts) {
+      authCredential.loginAttempts.count = 0;
+      authCredential.loginAttempts.locked = false;
+    }
 
     // Get user details
     const userServiceUrl = this.configService.get(
@@ -189,7 +199,7 @@ export class AuthService {
 
     // Save refresh token
     authCredential.refreshToken = refreshToken;
-    await authCredential.save();
+    await this.authRepository.save(authCredential);
 
     // Create session
     await this.createSession(user.id, accessToken, refreshToken);
@@ -215,9 +225,8 @@ export class AuthService {
     try {
       const payload = this.jwtService.verify(refreshToken);
 
-      const authCredential = await this.authModel.findOne({
-        userId: payload.sub,
-        refreshToken,
+      const authCredential = await this.authRepository.findOne({
+        where: { userId: payload.sub, refreshToken },
       });
 
       if (!authCredential) {
@@ -238,7 +247,7 @@ export class AuthService {
       });
 
       authCredential.refreshToken = newRefreshToken;
-      await authCredential.save();
+      await this.authRepository.save(authCredential);
 
       return ResponseUtil.success(
         {
@@ -253,21 +262,17 @@ export class AuthService {
   }
 
   async logout(userId: string) {
-    await this.authModel.updateOne(
-      { userId },
-      { $set: { refreshToken: null } },
-    );
+    await this.authRepository.update({ userId }, { refreshToken: null });
 
-    await this.sessionModel.updateMany(
-      { userId },
-      { $set: { isActive: false } },
-    );
+    await this.sessionRepository.update({ userId }, { isActive: false });
 
     return ResponseUtil.success(null, 'Logged out successfully');
   }
 
   async changePassword(userId: string, changePasswordDto: ChangePasswordDto) {
-    const authCredential = await this.authModel.findOne({ userId });
+    const authCredential = await this.authRepository.findOne({
+      where: { userId },
+    });
 
     if (!authCredential) {
       throw new NotFoundException('User not found');
@@ -285,9 +290,12 @@ export class AuthService {
     authCredential.passwordHash = await HashUtil.hash(
       changePasswordDto.newPassword,
     );
+    if (!authCredential.passwordHistory) {
+      authCredential.passwordHistory = [];
+    }
     authCredential.passwordHistory.push(new Date());
 
-    await authCredential.save();
+    await this.authRepository.save(authCredential);
 
     return ResponseUtil.success(null, 'Password changed successfully');
   }
@@ -299,24 +307,26 @@ export class AuthService {
         parseInt(this.configService.get('OTP_EXPIRATION', '300')) * 1000,
     );
 
-    const otp = new this.otpModel({
+    const otp = this.otpRepository.create({
       userId,
       code,
-      type,
+      type: type as OTPType,
       expiresAt,
     });
 
-    await otp.save();
+    await this.otpRepository.save(otp);
 
     // In production, send OTP via email/SMS through notification service
     return ResponseUtil.success({ code }, 'OTP generated successfully');
   }
 
   async verifyOTP(verifyOTPDto: VerifyOTPDto) {
-    const otp = await this.otpModel.findOne({
-      userId: verifyOTPDto.userId,
-      type: verifyOTPDto.type,
-      used: false,
+    const otp = await this.otpRepository.findOne({
+      where: {
+        userId: verifyOTPDto.userId,
+        type: verifyOTPDto.type as OTPType,
+        used: false,
+      },
     });
 
     if (!otp) {
@@ -333,12 +343,12 @@ export class AuthService {
 
     if (otp.code !== verifyOTPDto.code) {
       otp.attempts += 1;
-      await otp.save();
+      await this.otpRepository.save(otp);
       throw new BadRequestException('Invalid OTP');
     }
 
     otp.used = true;
-    await otp.save();
+    await this.otpRepository.save(otp);
 
     // Update verification status in user service
     const userServiceUrl = this.configService.get(
@@ -365,13 +375,11 @@ export class AuthService {
   async enable2FA(userId: string) {
     const secret = OTPUtil.generateSecret();
 
-    await this.authModel.updateOne(
+    await this.authRepository.update(
       { userId },
       {
-        $set: {
-          twoFactorSecret: secret,
-          twoFactorEnabled: true,
-        },
+        twoFactorSecret: secret,
+        twoFactorEnabled: true,
       },
     );
 
@@ -384,13 +392,11 @@ export class AuthService {
   }
 
   async disable2FA(userId: string) {
-    await this.authModel.updateOne(
+    await this.authRepository.update(
       { userId },
       {
-        $set: {
-          twoFactorSecret: null,
-          twoFactorEnabled: false,
-        },
+        twoFactorSecret: null,
+        twoFactorEnabled: false,
       },
     );
 
@@ -407,7 +413,7 @@ export class AuthService {
         parseInt(this.configService.get('JWT_EXPIRATION', '24h')) * 1000,
     );
 
-    const session = new this.sessionModel({
+    const session = this.sessionRepository.create({
       userId,
       token,
       refreshToken,
@@ -415,20 +421,19 @@ export class AuthService {
       isActive: true,
     });
 
-    await session.save();
+    await this.sessionRepository.save(session);
   }
 
   async getSessions(userId: string) {
-    const sessions = await this.sessionModel.find({ userId, isActive: true });
+    const sessions = await this.sessionRepository.find({
+      where: { userId, isActive: true },
+    });
 
     return ResponseUtil.success(sessions);
   }
 
   async revokeSession(sessionId: string) {
-    await this.sessionModel.updateOne(
-      { _id: sessionId },
-      { $set: { isActive: false } },
-    );
+    await this.sessionRepository.update({ id: sessionId }, { isActive: false });
 
     return ResponseUtil.success(null, 'Session revoked successfully');
   }

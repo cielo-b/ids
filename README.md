@@ -26,23 +26,25 @@ The platform follows a **microservices architecture** with separate databases fo
 ### Technology Stack
 
 #### Backend
+
 - **Framework**: NestJS (Node.js)
 - **Language**: TypeScript
-- **Databases**: 
-  - PostgreSQL (User, Entity, Subscription, Manager, Employee, Menu, Order, Payment, Report services)
-  - MongoDB (Auth, Receipt, Notification, Audit services)
+- **Database**: PostgreSQL (All services)
+- **ORM**: TypeORM
 - **Caching**: Redis
 - **Authentication**: JWT with Passport
 - **Validation**: class-validator, class-transformer
 - **Documentation**: Swagger/OpenAPI
 
 #### Infrastructure
+
 - **Containerization**: Docker & Docker Compose
 - **Architecture Pattern**: Microservices with micro-databases
 
 ## 🚀 Features Implemented
 
 ### Authentication & Authorization
+
 - ✅ User registration with email/phone verification
 - ✅ JWT-based authentication with refresh tokens
 - ✅ Two-Factor Authentication (2FA) with TOTP
@@ -53,6 +55,7 @@ The platform follows a **microservices architecture** with separate databases fo
 - ✅ Role-Based Access Control (RBAC)
 
 ### User Management
+
 - ✅ Multi-role support (Super Admin, Entity Owner, Manager, Employee, Customer)
 - ✅ User profiles with preferences
 - ✅ Multi-language support (English, French)
@@ -60,6 +63,7 @@ The platform follows a **microservices architecture** with separate databases fo
 - ✅ User statistics and analytics
 
 ### Employee Management
+
 - ✅ Employee profiles with positions
 - ✅ Real-time availability tracking (Available, Busy, On Break, Off Duty)
 - ✅ Active order count management
@@ -70,6 +74,7 @@ The platform follows a **microservices architecture** with separate databases fo
 - ✅ Working hours configuration
 
 ### Menu & Product Management
+
 - ✅ Menu items with categories
 - ✅ Dynamic pricing and discounted prices
 - ✅ QR code generation for each item
@@ -84,6 +89,7 @@ The platform follows a **microservices architecture** with separate databases fo
 - ✅ Popular items tracking
 
 ### Common Features
+
 - ✅ Centralized error handling
 - ✅ Request validation
 - ✅ Standardized API responses
@@ -126,6 +132,7 @@ bill-me-platform/
 ## 🔧 Installation
 
 ### Prerequisites
+
 - Node.js (v20+)
 - Docker & Docker Compose
 - npm or yarn
@@ -133,33 +140,39 @@ bill-me-platform/
 ### Steps
 
 1. **Clone the repository**
+
 ```bash
 git clone <repository-url>
 cd bill-me-platform
 ```
 
 2. **Install dependencies**
+
 ```bash
 npm install
 ```
 
 3. **Set up environment variables**
+
 ```bash
 cp .env.example .env
 # Edit .env with your configuration
 ```
 
 4. **Start all services with Docker**
+
 ```bash
 npm run docker:up
 ```
 
 5. **View logs**
+
 ```bash
 npm run docker:logs
 ```
 
 6. **Stop all services**
+
 ```bash
 npm run docker:down
 ```
@@ -167,11 +180,13 @@ npm run docker:down
 ## 🏃 Running Services Locally (Development)
 
 ### Run all services concurrently
+
 ```bash
 npm run start:all
 ```
 
 ### Run individual services
+
 ```bash
 npm run start:gateway       # API Gateway
 npm run start:auth          # Auth Service
@@ -182,6 +197,7 @@ npm run start:menu          # Menu Service
 ```
 
 ### Build all services
+
 ```bash
 npm run build:all
 ```
@@ -212,7 +228,9 @@ Each microservice exposes Swagger documentation at `/api/docs`:
 
 ## 🗄️ Database Architecture
 
-### PostgreSQL Databases
+### PostgreSQL Databases (All Services)
+
+- `billme_auth` - Authentication credentials, sessions, OTPs
 - `billme_users` - User profiles and data
 - `billme_entities` - Entity information
 - `billme_subscriptions` - Subscription data
@@ -221,41 +239,45 @@ Each microservice exposes Swagger documentation at `/api/docs`:
 - `billme_menus` - Menu items, categories, promotions
 - `billme_orders` - Order information
 - `billme_payments` - Payment transactions
+- `billme_receipts` - Digital receipts
+- `billme_notifications` - Notification logs
+- `billme_audit` - Audit trails
 - `billme_reports` - Analytics data
 
-### MongoDB Databases
-- `billme-auth` - Authentication credentials, sessions, OTPs
-- `billme-receipts` - Digital receipts
-- `billme-notifications` - Notification logs
-- `billme-audit` - Audit trails
+**Note**: The platform now uses PostgreSQL exclusively for all services, providing consistency, ACID compliance, and powerful relational capabilities across the entire system.
 
 ## 🎯 User Roles & Permissions
 
 ### Super Admin
+
 - Full system access
 - Manage all entities
 - System configuration
 - Global analytics
 
 ### Entity Owner
+
 - Manage own entity and branches
 - View financial reports
 - Manage subscriptions
 - Add managers
 
 ### Manager
+
 - Manage employees
 - Approve orders and refunds
 - View entity analytics
 - Manage menu items
 
 ### Employee
+
 - Handle customer orders
 - Update order status
 - Mark payments
 - View performance metrics
 
 ### Customer
+
 - Browse menus
 - Place orders
 - Make payments
@@ -274,6 +296,7 @@ Each microservice exposes Swagger documentation at `/api/docs`:
 ## 📊 Key Features by Service
 
 ### Auth Service
+
 - User registration & login
 - JWT token management
 - 2FA enable/disable
@@ -282,6 +305,7 @@ Each microservice exposes Swagger documentation at `/api/docs`:
 - Password change
 
 ### Employee Service
+
 - Employee CRUD operations
 - Status management (Available, Busy, On Break, Off Duty)
 - Performance tracking
@@ -290,6 +314,7 @@ Each microservice exposes Swagger documentation at `/api/docs`:
 - Rating system
 
 ### Menu Service
+
 - Menu item management
 - QR code generation
 - Stock tracking
@@ -300,6 +325,7 @@ Each microservice exposes Swagger documentation at `/api/docs`:
 ## 🚧 Pending Implementation
 
 The following services are partially implemented and need completion:
+
 - Manager Service (complete implementation)
 - Order Service (bulk orders, bill splitting, QR tracking)
 - Payment Service (payment gateway integrations)
@@ -340,6 +366,7 @@ MTN_MOMO_API_KEY=your-key
 ## 🤝 Contributing
 
 This is a professional enterprise SaaS platform. Contributions should follow:
+
 - Clean code principles
 - SOLID principles
 - Comprehensive error handling
@@ -363,4 +390,3 @@ MIT License - ID Services Ltd.
 **Last Updated**: October 2025
 
 For support or inquiries, please contact: support@idservices.rw
-

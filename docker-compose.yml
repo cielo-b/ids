@@ -1,4 +1,4 @@
-version: '3.8'
+version: "3.8"
 
 services:
   # API Gateway
@@ -60,7 +60,11 @@ services:
     environment:
       - NODE_ENV=development
       - PORT=3001
-      - MONGODB_URI=mongodb://auth-db:27017/billme-auth
+      - POSTGRES_HOST=auth-db
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=billme_auth
+      - POSTGRES_PASSWORD=billme_auth_pass
+      - POSTGRES_DB=billme_auth
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - JWT_SECRET=${JWT_SECRET:-billme-secret-key-change-in-production}
@@ -75,12 +79,14 @@ services:
     restart: unless-stopped
 
   auth-db:
-    image: mongo:7
+    image: postgres:16-alpine
     container_name: billme-auth-db
     volumes:
-      - auth-db-data:/data/db
+      - auth-db-data:/var/lib/postgresql/data
     environment:
-      - MONGO_INITDB_DATABASE=billme-auth
+      - POSTGRES_USER=billme_auth
+      - POSTGRES_PASSWORD=billme_auth_pass
+      - POSTGRES_DB=billme_auth
     networks:
       - billme-network
     restart: unless-stopped
@@ -418,7 +424,11 @@ services:
     environment:
       - NODE_ENV=development
       - PORT=3010
-      - MONGODB_URI=mongodb://receipt-db:27017/billme-receipts
+      - POSTGRES_HOST=receipt-db
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=billme_receipt
+      - POSTGRES_PASSWORD=billme_receipt_pass
+      - POSTGRES_DB=billme_receipts
       - REDIS_HOST=redis
       - REDIS_PORT=6379
     depends_on:
@@ -429,12 +439,14 @@ services:
     restart: unless-stopped
 
   receipt-db:
-    image: mongo:7
+    image: postgres:16-alpine
     container_name: billme-receipt-db
     volumes:
-      - receipt-db-data:/data/db
+      - receipt-db-data:/var/lib/postgresql/data
     environment:
-      - MONGO_INITDB_DATABASE=billme-receipts
+      - POSTGRES_USER=billme_receipt
+      - POSTGRES_PASSWORD=billme_receipt_pass
+      - POSTGRES_DB=billme_receipts
     networks:
       - billme-network
     restart: unless-stopped
@@ -452,7 +464,11 @@ services:
     environment:
       - NODE_ENV=development
       - PORT=3011
-      - MONGODB_URI=mongodb://notification-db:27017/billme-notifications
+      - POSTGRES_HOST=notification-db
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=billme_notification
+      - POSTGRES_PASSWORD=billme_notification_pass
+      - POSTGRES_DB=billme_notifications
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - SMTP_HOST=${SMTP_HOST:-smtp.gmail.com}
@@ -469,12 +485,14 @@ services:
     restart: unless-stopped
 
   notification-db:
-    image: mongo:7
+    image: postgres:16-alpine
     container_name: billme-notification-db
     volumes:
-      - notification-db-data:/data/db
+      - notification-db-data:/var/lib/postgresql/data
     environment:
-      - MONGO_INITDB_DATABASE=billme-notifications
+      - POSTGRES_USER=billme_notification
+      - POSTGRES_PASSWORD=billme_notification_pass
+      - POSTGRES_DB=billme_notifications
     networks:
       - billme-network
     restart: unless-stopped
@@ -492,7 +510,11 @@ services:
     environment:
       - NODE_ENV=development
       - PORT=3012
-      - MONGODB_URI=mongodb://audit-db:27017/billme-audit
+      - POSTGRES_HOST=audit-db
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=billme_audit
+      - POSTGRES_PASSWORD=billme_audit_pass
+      - POSTGRES_DB=billme_audit
       - REDIS_HOST=redis
       - REDIS_PORT=6379
     depends_on:
@@ -503,12 +525,14 @@ services:
     restart: unless-stopped
 
   audit-db:
-    image: mongo:7
+    image: postgres:16-alpine
     container_name: billme-audit-db
     volumes:
-      - audit-db-data:/data/db
+      - audit-db-data:/var/lib/postgresql/data
     environment:
-      - MONGO_INITDB_DATABASE=billme-audit
+      - POSTGRES_USER=billme_audit
+      - POSTGRES_PASSWORD=billme_audit_pass
+      - POSTGRES_DB=billme_audit
     networks:
       - billme-network
     restart: unless-stopped
@@ -572,4 +596,3 @@ volumes:
 networks:
   billme-network:
     driver: bridge
-

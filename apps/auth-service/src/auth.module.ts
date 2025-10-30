@@ -1,14 +1,14 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { MongooseModule } from '@nestjs/mongoose';
+import { TypeOrmModule } from '@nestjs/typeorm';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { HttpModule } from '@nestjs/axios';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
-import { AuthCredential, AuthCredentialSchema } from './schemas/auth.schema';
-import { OTP, OTPSchema } from './schemas/otp.schema';
-import { Session, SessionSchema } from './schemas/session.schema';
+import { AuthCredential } from './entities/auth-credential.entity';
+import { OTP } from './entities/otp.entity';
+import { Session } from './entities/session.entity';
 import { JwtStrategy } from './strategies/jwt.strategy';
 
 @Module({
@@ -17,20 +17,21 @@ import { JwtStrategy } from './strategies/jwt.strategy';
       isGlobal: true,
       envFilePath: '.env',
     }),
-    MongooseModule.forRootAsync({
+    TypeOrmModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => ({
-        uri: configService.get(
-          'MONGODB_URI',
-          'mongodb://localhost:27017/billme-auth',
-        ),
+        type: 'postgres',
+        host: configService.get('POSTGRES_HOST', 'localhost'),
+        port: configService.get('POSTGRES_PORT', 5432),
+        username: configService.get('POSTGRES_USER', 'billme_auth'),
+        password: configService.get('POSTGRES_PASSWORD', 'billme_auth_pass'),
+        database: configService.get('POSTGRES_DB', 'billme_auth'),
+        entities: [AuthCredential, OTP, Session],
+        synchronize: configService.get('NODE_ENV') !== 'production',
+        logging: configService.get('NODE_ENV') === 'development',
       }),
     }),
-    MongooseModule.forFeature([
-      { name: AuthCredential.name, schema: AuthCredentialSchema },
-      { name: OTP.name, schema: OTPSchema },
-      { name: Session.name, schema: SessionSchema },
-    ]),
+    TypeOrmModule.forFeature([AuthCredential, OTP, Session]),
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
       inject: [ConfigService],
