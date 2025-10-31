@@ -10,21 +10,34 @@ import { Branch } from './entities/branch.entity';
 import { CreateEntityDto } from './dto/create-entity.dto';
 import { UpdateEntityDto } from './dto/update-entity.dto';
 import { CreateBranchDto } from './dto/create-branch.dto';
-import { ResponseUtil, EntityCategory } from '@app/common';
+import { ResponseUtil, EntityCategory, CacheService } from '@app/common';
 
 @Injectable()
 export class EntityService {
+  private readonly CACHE_TTL = 3600; // 1 hour
+  private readonly LIST_CACHE_TTL = 600; // 10 minutes for lists
+
   constructor(
     @InjectRepository(BusinessEntity)
     private readonly entityRepository: Repository<BusinessEntity>,
     @InjectRepository(Branch)
     private readonly branchRepository: Repository<Branch>,
+    private cacheService: CacheService,
   ) {}
 
   // Entity Operations
   async createEntity(createEntityDto: CreateEntityDto) {
     const entity = this.entityRepository.create(createEntityDto);
     const savedEntity = await this.entityRepository.save(entity);
+
+    // Cache the new entity
+    await this.cacheService.set(
+      `entity:${savedEntity.id}`,
+      savedEntity,
+      this.CACHE_TTL,
+    );
+    // Invalidate lists cache
+    await this.cacheService.deletePattern('entity:list:*');
 
     return ResponseUtil.success(savedEntity, 'Entity created successfully');
   }
@@ -34,46 +47,70 @@ export class EntityService {
     ownerId?: string,
     isActive?: boolean,
   ) {
-    const queryBuilder = this.entityRepository.createQueryBuilder('entity');
+    // Generate cache key
+    const cacheKey = `entity:list:${category || ''}:${ownerId || ''}:${isActive !== undefined ? isActive : ''}`;
+    let entities = await this.cacheService.get<BusinessEntity[]>(cacheKey);
 
-    if (category) {
-      queryBuilder.andWhere('entity.category = :category', { category });
+    if (!entities) {
+      const queryBuilder = this.entityRepository.createQueryBuilder('entity');
+
+      if (category) {
+        queryBuilder.andWhere('entity.category = :category', { category });
+      }
+
+      if (ownerId) {
+        queryBuilder.andWhere('entity.ownerId = :ownerId', { ownerId });
+      }
+
+      if (isActive !== undefined) {
+        queryBuilder.andWhere('entity.isActive = :isActive', { isActive });
+      }
+
+      entities = await queryBuilder
+        .leftJoinAndSelect('entity.branches', 'branches')
+        .orderBy('entity.createdAt', 'DESC')
+        .getMany();
+
+      // Cache the result
+      await this.cacheService.set(cacheKey, entities, this.LIST_CACHE_TTL);
     }
-
-    if (ownerId) {
-      queryBuilder.andWhere('entity.ownerId = :ownerId', { ownerId });
-    }
-
-    if (isActive !== undefined) {
-      queryBuilder.andWhere('entity.isActive = :isActive', { isActive });
-    }
-
-    const entities = await queryBuilder
-      .leftJoinAndSelect('entity.branches', 'branches')
-      .orderBy('entity.createdAt', 'DESC')
-      .getMany();
 
     return ResponseUtil.success(entities);
   }
 
   async findEntity(id: string) {
-    const entity = await this.entityRepository.findOne({
-      where: { id },
-      relations: ['branches'],
-    });
+    const cacheKey = `entity:${id}`;
+    let entity = await this.cacheService.get<BusinessEntity>(cacheKey);
 
     if (!entity) {
-      throw new NotFoundException('Entity not found');
+      entity = await this.entityRepository.findOne({
+        where: { id },
+        relations: ['branches'],
+      });
+
+      if (!entity) {
+        throw new NotFoundException('Entity not found');
+      }
+
+      // Cache the entity
+      await this.cacheService.set(cacheKey, entity, this.CACHE_TTL);
     }
 
     return ResponseUtil.success(entity);
   }
 
   async findByOwner(ownerId: string) {
-    const entities = await this.entityRepository.find({
-      where: { ownerId },
-      relations: ['branches'],
-    });
+    const cacheKey = `entity:owner:${ownerId}`;
+    let entities = await this.cacheService.get<BusinessEntity[]>(cacheKey);
+
+    if (!entities) {
+      entities = await this.entityRepository.find({
+        where: { ownerId },
+        relations: ['branches'],
+      });
+
+      await this.cacheService.set(cacheKey, entities, this.LIST_CACHE_TTL);
+    }
 
     return ResponseUtil.success(entities);
   }
@@ -88,6 +125,16 @@ export class EntityService {
     Object.assign(entity, updateEntityDto);
     const updatedEntity = await this.entityRepository.save(entity);
 
+    // Update cache
+    await this.cacheService.set(
+      `entity:${updatedEntity.id}`,
+      updatedEntity,
+      this.CACHE_TTL,
+    );
+    // Invalidate related caches
+    await this.cacheService.invalidateEntityCache(updatedEntity.id);
+    await this.cacheService.deletePattern('entity:list:*');
+
     return ResponseUtil.success(updatedEntity, 'Entity updated successfully');
   }
 
@@ -100,6 +147,10 @@ export class EntityService {
 
     entity.isActive = false;
     await this.entityRepository.save(entity);
+
+    // Invalidate all entity-related caches
+    await this.cacheService.invalidateEntityCache(id);
+    await this.cacheService.deletePattern('entity:list:*');
 
     return ResponseUtil.success(null, 'Entity deleted successfully');
   }
@@ -117,28 +168,52 @@ export class EntityService {
     const branch = this.branchRepository.create(createBranchDto);
     const savedBranch = await this.branchRepository.save(branch);
 
+    // Cache the new branch
+    await this.cacheService.set(
+      `branch:${savedBranch.id}`,
+      savedBranch,
+      this.CACHE_TTL,
+    );
+    // Invalidate entity cache (since it has branches relation)
+    await this.cacheService.invalidateEntityCache(createBranchDto.entityId);
+    await this.cacheService.deletePattern('branch:list:*');
+
     return ResponseUtil.success(savedBranch, 'Branch created successfully');
   }
 
   async findAllBranches(entityId?: string) {
-    const queryBuilder = this.branchRepository.createQueryBuilder('branch');
+    const cacheKey = `branch:list:${entityId || 'all'}`;
+    let branches = await this.cacheService.get<Branch[]>(cacheKey);
 
-    if (entityId) {
-      queryBuilder.where('branch.entityId = :entityId', { entityId });
+    if (!branches) {
+      const queryBuilder = this.branchRepository.createQueryBuilder('branch');
+
+      if (entityId) {
+        queryBuilder.where('branch.entityId = :entityId', { entityId });
+      }
+
+      branches = await queryBuilder
+        .orderBy('branch.createdAt', 'DESC')
+        .getMany();
+
+      await this.cacheService.set(cacheKey, branches, this.LIST_CACHE_TTL);
     }
-
-    const branches = await queryBuilder
-      .orderBy('branch.createdAt', 'DESC')
-      .getMany();
 
     return ResponseUtil.success(branches);
   }
 
   async findBranch(id: string) {
-    const branch = await this.branchRepository.findOne({ where: { id } });
+    const cacheKey = `branch:${id}`;
+    let branch = await this.cacheService.get<Branch>(cacheKey);
 
     if (!branch) {
-      throw new NotFoundException('Branch not found');
+      branch = await this.branchRepository.findOne({ where: { id } });
+
+      if (!branch) {
+        throw new NotFoundException('Branch not found');
+      }
+
+      await this.cacheService.set(cacheKey, branch, this.CACHE_TTL);
     }
 
     return ResponseUtil.success(branch);
@@ -153,6 +228,18 @@ export class EntityService {
 
     Object.assign(branch, updateBranchDto);
     const updatedBranch = await this.branchRepository.save(branch);
+
+    // Update cache
+    await this.cacheService.set(
+      `branch:${updatedBranch.id}`,
+      updatedBranch,
+      this.CACHE_TTL,
+    );
+    // Invalidate entity cache and branch lists
+    if (updatedBranch.entityId) {
+      await this.cacheService.invalidateEntityCache(updatedBranch.entityId);
+    }
+    await this.cacheService.deletePattern('branch:list:*');
 
     return ResponseUtil.success(updatedBranch, 'Branch updated successfully');
   }
@@ -169,6 +256,16 @@ export class EntityService {
     branch.managerId = managerId;
     const updatedBranch = await this.branchRepository.save(branch);
 
+    // Update cache
+    await this.cacheService.set(
+      `branch:${updatedBranch.id}`,
+      updatedBranch,
+      this.CACHE_TTL,
+    );
+    if (updatedBranch.entityId) {
+      await this.cacheService.invalidateEntityCache(updatedBranch.entityId);
+    }
+
     return ResponseUtil.success(updatedBranch, 'Manager assigned successfully');
   }
 
@@ -181,6 +278,13 @@ export class EntityService {
 
     branch.isActive = false;
     await this.branchRepository.save(branch);
+
+    // Invalidate branch and entity caches
+    await this.cacheService.delete(`branch:${id}`);
+    await this.cacheService.deletePattern('branch:list:*');
+    if (branch.entityId) {
+      await this.cacheService.invalidateEntityCache(branch.entityId);
+    }
 
     return ResponseUtil.success(null, 'Branch deleted successfully');
   }

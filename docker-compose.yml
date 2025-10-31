@@ -81,6 +81,8 @@ services:
   auth-db:
     image: postgres:16-alpine
     container_name: billme-auth-db
+    ports:
+      - "5433:5432"
     volumes:
       - auth-db-data:/var/lib/postgresql/data
     environment:
@@ -121,6 +123,8 @@ services:
   user-db:
     image: postgres:16-alpine
     container_name: billme-user-db
+    ports:
+      - "5434:5432"
     volumes:
       - user-db-data:/var/lib/postgresql/data
     environment:
@@ -161,6 +165,8 @@ services:
   entity-db:
     image: postgres:16-alpine
     container_name: billme-entity-db
+    ports:
+      - "5435:5432"
     volumes:
       - entity-db-data:/var/lib/postgresql/data
     environment:

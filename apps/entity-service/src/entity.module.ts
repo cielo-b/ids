@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { CacheModule } from '@app/common';
 import { EntityController } from './entity.controller';
 import { EntityService } from './entity.service';
 import { BusinessEntity } from './entities/entity.entity';
@@ -12,6 +13,7 @@ import { Branch } from './entities/branch.entity';
       isGlobal: true,
       envFilePath: '.env',
     }),
+    CacheModule,
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => ({

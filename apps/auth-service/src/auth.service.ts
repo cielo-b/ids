@@ -17,13 +17,21 @@ import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { VerifyOTPDto } from './dto/verify-otp.dto';
-import { HashUtil, OTPUtil, ResponseUtil, JwtPayload } from '@app/common';
+import {
+  HashUtil,
+  OTPUtil,
+  ResponseUtil,
+  JwtPayload,
+  CacheService,
+} from '@app/common';
 import { firstValueFrom } from 'rxjs';
 
 @Injectable()
 export class AuthService {
   private readonly MAX_LOGIN_ATTEMPTS = 5;
   private readonly LOCK_TIME = 15 * 60 * 1000; // 15 minutes
+  private readonly CACHE_TTL = 3600; // 1 hour for auth credentials
+  private readonly USER_CACHE_TTL = 1800; // 30 minutes for user data
 
   constructor(
     @InjectRepository(AuthCredential)
@@ -35,6 +43,7 @@ export class AuthService {
     private jwtService: JwtService,
     private configService: ConfigService,
     private httpService: HttpService,
+    private cacheService: CacheService,
   ) {}
 
   async register(registerDto: RegisterDto) {
@@ -83,6 +92,14 @@ export class AuthService {
 
       await this.authRepository.save(authCredential);
 
+      // Cache the new credential
+      const cacheKey = `auth:credential:email:${registerDto.email}`;
+      await this.cacheService.set(
+        cacheKey,
+        { ...authCredential, passwordHash: undefined },
+        this.CACHE_TTL,
+      );
+
       // Generate email verification OTP
       await this.generateOTP(user.id, 'EMAIL');
 
@@ -99,12 +116,36 @@ export class AuthService {
   }
 
   async login(loginDto: LoginDto) {
-    const authCredential = await this.authRepository.findOne({
-      where: { email: loginDto.email },
-    });
+    // Try to get from cache first
+    const cacheKey = `auth:credential:email:${loginDto.email}`;
+    let authCredential = await this.cacheService.get<AuthCredential>(cacheKey);
 
     if (!authCredential) {
-      throw new UnauthorizedException('Invalid credentials');
+      authCredential = await this.authRepository.findOne({
+        where: { email: loginDto.email },
+      });
+
+      if (!authCredential) {
+        throw new UnauthorizedException('Invalid credentials');
+      }
+
+      // Cache the credential (excluding sensitive password hash from cache)
+      await this.cacheService.set(
+        cacheKey,
+        { ...authCredential, passwordHash: undefined },
+        this.CACHE_TTL,
+      );
+    } else {
+      // If from cache, we need to get password hash from DB
+      const fullCredential = await this.authRepository.findOne({
+        where: { email: loginDto.email },
+      });
+      if (!fullCredential) {
+        await this.cacheService.delete(cacheKey);
+        throw new UnauthorizedException('Invalid credentials');
+      }
+      authCredential.passwordHash = fullCredential.passwordHash;
+      authCredential.loginAttempts = fullCredential.loginAttempts;
     }
 
     // Check if account is locked
@@ -146,6 +187,8 @@ export class AuthService {
       }
 
       await this.authRepository.save(authCredential);
+      // Invalidate cache on failed login
+      await this.cacheService.delete(cacheKey);
       throw new UnauthorizedException('Invalid credentials');
     }
 
@@ -171,18 +214,25 @@ export class AuthService {
       authCredential.loginAttempts.locked = false;
     }
 
-    // Get user details
+    // Get user details with caching
     const userServiceUrl = this.configService.get(
       'USER_SERVICE_URL',
       'http://user-service:3002',
     );
-    const userResponse = await firstValueFrom(
-      this.httpService.get(
-        `${userServiceUrl}/api/v1/users/${authCredential.userId}`,
-      ),
-    );
+    const userCacheKey = `user:${authCredential.userId}`;
+    let user = await this.cacheService.get<any>(userCacheKey);
 
-    const user = userResponse.data.data;
+    if (!user) {
+      const userResponse = await firstValueFrom(
+        this.httpService.get(
+          `${userServiceUrl}/api/v1/users/${authCredential.userId}`,
+        ),
+      );
+
+      user = userResponse.data.data;
+      // Cache user data
+      await this.cacheService.set(userCacheKey, user, this.USER_CACHE_TTL);
+    }
 
     // Generate tokens
     const payload: JwtPayload = {
@@ -200,6 +250,13 @@ export class AuthService {
     // Save refresh token
     authCredential.refreshToken = refreshToken;
     await this.authRepository.save(authCredential);
+
+    // Update cache with new refresh token
+    await this.cacheService.set(
+      cacheKey,
+      { ...authCredential, passwordHash: undefined },
+      this.CACHE_TTL,
+    );
 
     // Create session
     await this.createSession(user.id, accessToken, refreshToken);
@@ -225,12 +282,19 @@ export class AuthService {
     try {
       const payload = this.jwtService.verify(refreshToken);
 
-      const authCredential = await this.authRepository.findOne({
-        where: { userId: payload.sub, refreshToken },
-      });
+      // Check cache first
+      const cacheKey = `auth:credential:userId:${payload.sub}`;
+      let authCredential =
+        await this.cacheService.get<AuthCredential>(cacheKey);
 
-      if (!authCredential) {
-        throw new UnauthorizedException('Invalid refresh token');
+      if (!authCredential || authCredential.refreshToken !== refreshToken) {
+        authCredential = await this.authRepository.findOne({
+          where: { userId: payload.sub, refreshToken },
+        });
+
+        if (!authCredential) {
+          throw new UnauthorizedException('Invalid refresh token');
+        }
       }
 
       // Generate new tokens
@@ -249,6 +313,17 @@ export class AuthService {
       authCredential.refreshToken = newRefreshToken;
       await this.authRepository.save(authCredential);
 
+      // Update cache
+      await this.cacheService.set(
+        cacheKey,
+        { ...authCredential, passwordHash: undefined },
+        this.CACHE_TTL,
+      );
+      // Also invalidate email-based cache
+      await this.cacheService.delete(
+        `auth:credential:email:${authCredential.email}`,
+      );
+
       return ResponseUtil.success(
         {
           accessToken,
@@ -265,6 +340,9 @@ export class AuthService {
     await this.authRepository.update({ userId }, { refreshToken: null });
 
     await this.sessionRepository.update({ userId }, { isActive: false });
+
+    // Invalidate all auth-related cache for this user
+    await this.cacheService.invalidateUser(userId);
 
     return ResponseUtil.success(null, 'Logged out successfully');
   }
@@ -296,6 +374,14 @@ export class AuthService {
     authCredential.passwordHistory.push(new Date());
 
     await this.authRepository.save(authCredential);
+
+    // Invalidate auth cache on password change
+    await this.cacheService.delete(
+      `auth:credential:email:${authCredential.email}`,
+    );
+    await this.cacheService.delete(
+      `auth:credential:userId:${authCredential.userId}`,
+    );
 
     return ResponseUtil.success(null, 'Password changed successfully');
   }
@@ -383,6 +469,9 @@ export class AuthService {
       },
     );
 
+    // Invalidate cache
+    await this.cacheService.invalidateUser(userId);
+
     const otpauth = `otpauth://totp/BillMe:${userId}?secret=${secret}&issuer=BillMe`;
 
     return ResponseUtil.success(
@@ -399,6 +488,9 @@ export class AuthService {
         twoFactorEnabled: false,
       },
     );
+
+    // Invalidate cache
+    await this.cacheService.invalidateUser(userId);
 
     return ResponseUtil.success(null, '2FA disabled successfully');
   }
@@ -425,15 +517,31 @@ export class AuthService {
   }
 
   async getSessions(userId: string) {
-    const sessions = await this.sessionRepository.find({
-      where: { userId, isActive: true },
-    });
+    const cacheKey = `auth:sessions:${userId}`;
+    let sessions = await this.cacheService.get<Session[]>(cacheKey);
+
+    if (!sessions) {
+      sessions = await this.sessionRepository.find({
+        where: { userId, isActive: true },
+      });
+      // Cache for 5 minutes
+      await this.cacheService.set(cacheKey, sessions, 300);
+    }
 
     return ResponseUtil.success(sessions);
   }
 
   async revokeSession(sessionId: string) {
+    const session = await this.sessionRepository.findOne({
+      where: { id: sessionId },
+    });
+
     await this.sessionRepository.update({ id: sessionId }, { isActive: false });
+
+    // Invalidate sessions cache for this user
+    if (session) {
+      await this.cacheService.delete(`auth:sessions:${session.userId}`);
+    }
 
     return ResponseUtil.success(null, 'Session revoked successfully');
   }

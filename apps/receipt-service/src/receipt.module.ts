@@ -2,9 +2,9 @@ import { Module } from "@nestjs/common";
 import { ConfigModule, ConfigService } from "@nestjs/config";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import { CacheModule } from "@app/common";
-import { EmployeeController } from "./employee.controller";
-import { EmployeeService } from "./employee.service";
-import { Employee } from "./entities/employee.entity";
+import { ReceiptController } from "./receipt.controller";
+import { ReceiptService } from "./receipt.service";
+import { Receipt } from "./entities/receipt.entity";
 
 @Module({
   imports: [
@@ -19,21 +19,18 @@ import { Employee } from "./entities/employee.entity";
         type: "postgres",
         host: configService.get("POSTGRES_HOST", "localhost"),
         port: configService.get("POSTGRES_PORT", 5432),
-        username: configService.get("POSTGRES_USER", "billme_employee"),
-        password: configService.get(
-          "POSTGRES_PASSWORD",
-          "billme_employee_pass"
-        ),
-        database: configService.get("POSTGRES_DB", "billme_employees"),
-        entities: [Employee],
+        username: configService.get("POSTGRES_USER", "billme_receipt"),
+        password: configService.get("POSTGRES_PASSWORD", "billme_receipt_pass"),
+        database: configService.get("POSTGRES_DB", "billme_receipts"),
+        entities: [Receipt],
         synchronize: configService.get("NODE_ENV") !== "production",
         logging: configService.get("NODE_ENV") === "development",
       }),
     }),
-    TypeOrmModule.forFeature([Employee]),
+    TypeOrmModule.forFeature([Receipt]),
   ],
-  controllers: [EmployeeController],
-  providers: [EmployeeService],
-  exports: [EmployeeService],
+  controllers: [ReceiptController],
+  providers: [ReceiptService],
+  exports: [ReceiptService],
 })
-export class EmployeeModule {}
+export class ReceiptModule {}

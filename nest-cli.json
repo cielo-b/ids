@@ -135,6 +135,15 @@
         "tsConfigPath": "apps/employee-service/tsconfig.app.json"
       }
     },
+    "manager-service": {
+      "type": "application",
+      "root": "apps/manager-service",
+      "entryFile": "main",
+      "sourceRoot": "apps/manager-service/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/manager-service/tsconfig.app.json"
+      }
+    },
     "menu-service": {
       "type": "application",
       "root": "apps/menu-service",

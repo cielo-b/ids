@@ -2,20 +2,24 @@ import {
   Injectable,
   NotFoundException,
   ConflictException,
-} from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { Employee } from './entities/employee.entity';
-import { CreateEmployeeDto } from './dto/create-employee.dto';
-import { UpdateEmployeeDto } from './dto/update-employee.dto';
-import { UpdateStatusDto } from './dto/update-status.dto';
-import { ResponseUtil, EmployeeStatus } from '@app/common';
+} from "@nestjs/common";
+import { InjectRepository } from "@nestjs/typeorm";
+import { Repository } from "typeorm";
+import { Employee } from "./entities/employee.entity";
+import { CreateEmployeeDto } from "./dto/create-employee.dto";
+import { UpdateEmployeeDto } from "./dto/update-employee.dto";
+import { UpdateStatusDto } from "./dto/update-status.dto";
+import { ResponseUtil, EmployeeStatus, CacheService } from "@app/common";
 
 @Injectable()
 export class EmployeeService {
+  private readonly CACHE_TTL = 1800; // 30 minutes
+  private readonly LIST_CACHE_TTL = 300; // 5 minutes for lists
+
   constructor(
     @InjectRepository(Employee)
     private readonly employeeRepository: Repository<Employee>,
+    private cacheService: CacheService
   ) {}
 
   async create(createEmployeeDto: CreateEmployeeDto) {
@@ -24,31 +28,31 @@ export class EmployeeService {
     });
 
     if (existingEmployee) {
-      throw new ConflictException('Employee already exists for this user');
+      throw new ConflictException("Employee already exists for this user");
     }
 
     const employee = this.employeeRepository.create(createEmployeeDto);
     const savedEmployee = await this.employeeRepository.save(employee);
 
-    return ResponseUtil.success(savedEmployee, 'Employee created successfully');
+    return ResponseUtil.success(savedEmployee, "Employee created successfully");
   }
 
   async findAll(entityId?: string, branchId?: string, status?: EmployeeStatus) {
-    const queryBuilder = this.employeeRepository.createQueryBuilder('employee');
+    const queryBuilder = this.employeeRepository.createQueryBuilder("employee");
 
     if (entityId) {
-      queryBuilder.andWhere('employee.entityId = :entityId', { entityId });
+      queryBuilder.andWhere("employee.entityId = :entityId", { entityId });
     }
 
     if (branchId) {
-      queryBuilder.andWhere('employee.branchId = :branchId', { branchId });
+      queryBuilder.andWhere("employee.branchId = :branchId", { branchId });
     }
 
     if (status) {
-      queryBuilder.andWhere('employee.status = :status', { status });
+      queryBuilder.andWhere("employee.status = :status", { status });
     }
 
-    queryBuilder.orderBy('employee.createdAt', 'DESC');
+    queryBuilder.orderBy("employee.createdAt", "DESC");
 
     const employees = await queryBuilder.getMany();
 
@@ -59,7 +63,7 @@ export class EmployeeService {
     const employee = await this.employeeRepository.findOne({ where: { id } });
 
     if (!employee) {
-      throw new NotFoundException('Employee not found');
+      throw new NotFoundException("Employee not found");
     }
 
     return ResponseUtil.success(employee);
@@ -71,7 +75,7 @@ export class EmployeeService {
     });
 
     if (!employee) {
-      throw new NotFoundException('Employee not found');
+      throw new NotFoundException("Employee not found");
     }
 
     return ResponseUtil.success(employee);
@@ -79,19 +83,19 @@ export class EmployeeService {
 
   async getAvailableEmployees(entityId: string, branchId?: string) {
     const queryBuilder = this.employeeRepository
-      .createQueryBuilder('employee')
-      .where('employee.entityId = :entityId', { entityId })
-      .andWhere('employee.status = :status', {
+      .createQueryBuilder("employee")
+      .where("employee.entityId = :entityId", { entityId })
+      .andWhere("employee.status = :status", {
         status: EmployeeStatus.AVAILABLE,
       })
-      .andWhere('employee.isActive = :isActive', { isActive: true });
+      .andWhere("employee.isActive = :isActive", { isActive: true });
 
     if (branchId) {
-      queryBuilder.andWhere('employee.branchId = :branchId', { branchId });
+      queryBuilder.andWhere("employee.branchId = :branchId", { branchId });
     }
 
     const employees = await queryBuilder
-      .orderBy('employee.activeOrders', 'ASC')
+      .orderBy("employee.activeOrders", "ASC")
       .getMany();
 
     return ResponseUtil.success(employees);
@@ -101,20 +105,23 @@ export class EmployeeService {
     const employee = await this.employeeRepository.findOne({ where: { id } });
 
     if (!employee) {
-      throw new NotFoundException('Employee not found');
+      throw new NotFoundException("Employee not found");
     }
 
     Object.assign(employee, updateEmployeeDto);
     const updatedEmployee = await this.employeeRepository.save(employee);
 
-    return ResponseUtil.success(updatedEmployee, 'Employee updated successfully');
+    return ResponseUtil.success(
+      updatedEmployee,
+      "Employee updated successfully"
+    );
   }
 
   async updateStatus(id: string, updateStatusDto: UpdateStatusDto) {
     const employee = await this.employeeRepository.findOne({ where: { id } });
 
     if (!employee) {
-      throw new NotFoundException('Employee not found');
+      throw new NotFoundException("Employee not found");
     }
 
     employee.status = updateStatusDto.status;
@@ -122,56 +129,57 @@ export class EmployeeService {
 
     const updatedEmployee = await this.employeeRepository.save(employee);
 
-    return ResponseUtil.success(updatedEmployee, 'Status updated successfully');
+    return ResponseUtil.success(updatedEmployee, "Status updated successfully");
   }
 
   async incrementActiveOrders(id: string) {
-    await this.employeeRepository.increment({ id }, 'activeOrders', 1);
+    await this.employeeRepository.increment({ id }, "activeOrders", 1);
     await this.employeeRepository.update(id, { lastActiveAt: new Date() });
 
-    return ResponseUtil.success(null, 'Active orders incremented');
+    return ResponseUtil.success(null, "Active orders incremented");
   }
 
   async decrementActiveOrders(id: string) {
-    await this.employeeRepository.decrement({ id }, 'activeOrders', 1);
+    await this.employeeRepository.decrement({ id }, "activeOrders", 1);
 
-    return ResponseUtil.success(null, 'Active orders decremented');
+    return ResponseUtil.success(null, "Active orders decremented");
   }
 
   async updateRevenue(id: string, amount: number) {
     const employee = await this.employeeRepository.findOne({ where: { id } });
 
     if (!employee) {
-      throw new NotFoundException('Employee not found');
+      throw new NotFoundException("Employee not found");
     }
 
-    employee.totalRevenue = parseFloat(employee.totalRevenue.toString()) + amount;
+    employee.totalRevenue =
+      parseFloat(employee.totalRevenue.toString()) + amount;
     employee.totalOrders += 1;
 
     await this.employeeRepository.save(employee);
 
-    return ResponseUtil.success(null, 'Revenue updated successfully');
+    return ResponseUtil.success(null, "Revenue updated successfully");
   }
 
   async addTip(id: string, tipAmount: number) {
     const employee = await this.employeeRepository.findOne({ where: { id } });
 
     if (!employee) {
-      throw new NotFoundException('Employee not found');
+      throw new NotFoundException("Employee not found");
     }
 
     employee.totalTips = parseFloat(employee.totalTips.toString()) + tipAmount;
 
     await this.employeeRepository.save(employee);
 
-    return ResponseUtil.success(null, 'Tip added successfully');
+    return ResponseUtil.success(null, "Tip added successfully");
   }
 
   async updateRating(id: string, rating: number) {
     const employee = await this.employeeRepository.findOne({ where: { id } });
 
     if (!employee) {
-      throw new NotFoundException('Employee not found');
+      throw new NotFoundException("Employee not found");
     }
 
     const totalRatings = employee.totalRatings + 1;
@@ -184,14 +192,14 @@ export class EmployeeService {
 
     await this.employeeRepository.save(employee);
 
-    return ResponseUtil.success(null, 'Rating updated successfully');
+    return ResponseUtil.success(null, "Rating updated successfully");
   }
 
   async getPerformance(id: string) {
     const employee = await this.employeeRepository.findOne({ where: { id } });
 
     if (!employee) {
-      throw new NotFoundException('Employee not found');
+      throw new NotFoundException("Employee not found");
     }
 
     const performance = {
@@ -215,7 +223,7 @@ export class EmployeeService {
     });
 
     if (!employee) {
-      throw new NotFoundException('Employee not found');
+      throw new NotFoundException("Employee not found");
     }
 
     const summary = {
@@ -233,38 +241,38 @@ export class EmployeeService {
     const employee = await this.employeeRepository.findOne({ where: { id } });
 
     if (!employee) {
-      throw new NotFoundException('Employee not found');
+      throw new NotFoundException("Employee not found");
     }
 
     await this.employeeRepository.remove(employee);
 
-    return ResponseUtil.success(null, 'Employee deleted successfully');
+    return ResponseUtil.success(null, "Employee deleted successfully");
   }
 
   async getStats(entityId?: string) {
-    const queryBuilder = this.employeeRepository.createQueryBuilder('employee');
+    const queryBuilder = this.employeeRepository.createQueryBuilder("employee");
 
     if (entityId) {
-      queryBuilder.where('employee.entityId = :entityId', { entityId });
+      queryBuilder.where("employee.entityId = :entityId", { entityId });
     }
 
     const totalEmployees = await queryBuilder.getCount();
 
     const availableEmployees = await queryBuilder
       .clone()
-      .andWhere('employee.status = :status', {
+      .andWhere("employee.status = :status", {
         status: EmployeeStatus.AVAILABLE,
       })
       .getCount();
 
     const busyEmployees = await queryBuilder
       .clone()
-      .andWhere('employee.status = :status', { status: EmployeeStatus.BUSY })
+      .andWhere("employee.status = :status", { status: EmployeeStatus.BUSY })
       .getCount();
 
     const topPerformers = await this.employeeRepository.find({
       where: entityId ? { entityId } : {},
-      order: { totalRevenue: 'DESC' },
+      order: { totalRevenue: "DESC" },
       take: 10,
     });
 
@@ -276,4 +284,3 @@ export class EmployeeService {
     });
   }
 }
-
