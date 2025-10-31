@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: menu-db
+  namespace: billme-platform
+  labels:
+    app: menu-db
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: menu-db
+  template:
+    metadata:
+      labels:
+        app: menu-db
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              value: billme_menu
+            - name: POSTGRES_PASSWORD
+              value: billme_menu_pass
+            - name: POSTGRES_DB
+              value: billme_menus
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+      volumes:
+        - name: postgres-data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: menu-db-service
+  namespace: billme-platform
+  labels:
+    app: menu-db
+spec:
+  type: ClusterIP
+  ports:
+    - port: 5432
+      targetPort: 5432
+      protocol: TCP
+  selector:
+    app: menu-db

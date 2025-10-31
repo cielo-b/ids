@@ -1,0 +1,24 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: receipt-service-config
+  namespace: billme-platform
+data:
+  NODE_ENV: development
+  PORT: "3010"
+  POSTGRES_HOST: receipt-db-service
+  POSTGRES_PORT: "5432"
+  POSTGRES_USER: billme_receipt
+  POSTGRES_DB: billme_receipts
+  REDIS_HOST: redis-service
+  REDIS_PORT: "6379"
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: receipt-service-secrets
+  namespace: billme-platform
+type: Opaque
+stringData:
+  POSTGRES_PASSWORD: billme_receipt_pass

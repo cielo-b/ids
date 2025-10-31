@@ -21,7 +21,7 @@ ARG APP_NAME
 ENV APP_NAME=${APP_NAME}
 
 # Build the specific application
-RUN npm run build ${APP_NAME}
+RUN npx nest build ${APP_NAME}
 
 # Production stage
 FROM node:20-alpine

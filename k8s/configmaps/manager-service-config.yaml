@@ -1,0 +1,24 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: manager-service-config
+  namespace: billme-platform
+data:
+  NODE_ENV: development
+  PORT: "3005"
+  POSTGRES_HOST: manager-db-service
+  POSTGRES_PORT: "5432"
+  POSTGRES_USER: billme_manager
+  POSTGRES_DB: billme_managers
+  REDIS_HOST: redis-service
+  REDIS_PORT: "6379"
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: manager-service-secrets
+  namespace: billme-platform
+type: Opaque
+stringData:
+  POSTGRES_PASSWORD: billme_manager_pass

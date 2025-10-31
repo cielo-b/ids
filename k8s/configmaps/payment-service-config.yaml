@@ -1,0 +1,24 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: payment-service-config
+  namespace: billme-platform
+data:
+  NODE_ENV: development
+  PORT: "3009"
+  POSTGRES_HOST: payment-db-service
+  POSTGRES_PORT: "5432"
+  POSTGRES_USER: billme_payment
+  POSTGRES_DB: billme_payments
+  REDIS_HOST: redis-service
+  REDIS_PORT: "6379"
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: payment-service-secrets
+  namespace: billme-platform
+type: Opaque
+stringData:
+  POSTGRES_PASSWORD: billme_payment_pass

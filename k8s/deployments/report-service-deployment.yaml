@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: report-service
+  namespace: billme-platform
+  labels:
+    app: report-service
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: report-service
+  template:
+    metadata:
+      labels:
+        app: report-service
+    spec:
+      containers:
+        - name: report-service
+          image: billme-report-service:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3013
+          envFrom:
+            - configMapRef:
+                name: report-service-config
+            - secretRef:
+                name: report-service-secrets
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          livenessProbe:
+            httpGet:
+              path: /api/docs
+              port: 3013
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /api/docs
+              port: 3013
+            initialDelaySeconds: 10
+            periodSeconds: 5

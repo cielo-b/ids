@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: audit-service
+  namespace: billme-platform
+  labels:
+    app: audit-service
+spec:
+  type: ClusterIP
+  ports:
+    - port: 3012
+      targetPort: 3012
+      protocol: TCP
+  selector:
+    app: audit-service

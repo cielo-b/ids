@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: menu-service
+  namespace: billme-platform
+  labels:
+    app: menu-service
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: menu-service
+  template:
+    metadata:
+      labels:
+        app: menu-service
+    spec:
+      containers:
+        - name: menu-service
+          image: billme-menu-service:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3007
+          envFrom:
+            - configMapRef:
+                name: menu-service-config
+            - secretRef:
+                name: menu-service-secrets
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          livenessProbe:
+            httpGet:
+              path: /api/docs
+              port: 3007
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /api/docs
+              port: 3007
+            initialDelaySeconds: 10
+            periodSeconds: 5

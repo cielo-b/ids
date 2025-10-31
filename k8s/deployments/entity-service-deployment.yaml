@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: entity-service
+  namespace: billme-platform
+  labels:
+    app: entity-service
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: entity-service
+  template:
+    metadata:
+      labels:
+        app: entity-service
+    spec:
+      containers:
+        - name: entity-service
+          image: billme-entity-service:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3003
+          envFrom:
+            - configMapRef:
+                name: entity-service-config
+            - secretRef:
+                name: entity-service-secrets
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          livenessProbe:
+            httpGet:
+              path: /api/docs
+              port: 3003
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /api/docs
+              port: 3003
+            initialDelaySeconds: 10
+            periodSeconds: 5

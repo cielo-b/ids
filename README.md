@@ -2,6 +2,10 @@
 
 A comprehensive, professional microservices-based SaaS platform for managing business operations in restaurants, gas stations, supermarkets, and similar establishments.
 
+**Author:** D Regis  
+**GitHub:** [github.com/cielo-b](https://github.com/cielo-b)  
+**Phone:** 0790539402
+
 ## 🏗️ Architecture
 
 The platform follows a **microservices architecture** with separate databases for each service, ensuring scalability, maintainability, and fault isolation.
@@ -39,6 +43,7 @@ The platform follows a **microservices architecture** with separate databases fo
 #### Infrastructure
 
 - **Containerization**: Docker & Docker Compose
+- **Orchestration**: Kubernetes (K8s)
 - **Architecture Pattern**: Microservices with micro-databases
 
 ## 🚀 Features Implemented
@@ -136,13 +141,14 @@ bill-me-platform/
 - Node.js (v20+)
 - Docker & Docker Compose
 - npm or yarn
+- Kubernetes (for K8s deployment) - Minikube, Kind, or Docker Desktop K8s
 
 ### Steps
 
 1. **Clone the repository**
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/cielo-b/bill-me-platform.git
 cd bill-me-platform
 ```
 
@@ -162,16 +168,34 @@ cp .env.example .env
 4. **Start all services with Docker**
 
 ```bash
+docker-compose up -d
+```
+
+Or use npm script:
+
+```bash
 npm run docker:up
 ```
 
 5. **View logs**
 
 ```bash
+docker-compose logs -f
+```
+
+Or use npm script:
+
+```bash
 npm run docker:logs
 ```
 
 6. **Stop all services**
+
+```bash
+docker-compose down
+```
+
+Or use npm script:
 
 ```bash
 npm run docker:down
@@ -193,14 +217,148 @@ npm run start:auth          # Auth Service
 npm run start:user          # User Service
 npm run start:employee      # Employee Service
 npm run start:menu          # Menu Service
+npm run start:entity        # Entity Service
+npm run start:manager       # Manager Service
+npm run start:order         # Order Service
+npm run start:payment       # Payment Service
+npm run start:receipt       # Receipt Service
 # ... etc
 ```
 
 ### Build all services
 
 ```bash
-npm run build:all
+npm run build
 ```
+
+## ☸️ Kubernetes Deployment
+
+### Prerequisites
+
+- Kubernetes cluster (Minikube, Kind, or Docker Desktop with K8s enabled)
+- `kubectl` installed and configured
+- Docker images built for services
+
+### Quick Deploy to Localhost
+
+1. **Ensure Kubernetes is running**
+
+   For Minikube:
+
+   ```bash
+   minikube start
+   ```
+
+   For Kind:
+
+   ```bash
+   kind create cluster
+   ```
+
+   For Docker Desktop:
+   - Enable Kubernetes in Docker Desktop settings
+
+2. **Build Docker images** (if not already built)
+
+   ```bash
+   # Build all images
+   docker-compose build
+
+   # Or build individual service images
+   docker build -t billme-api-gateway:latest --build-arg APP_NAME=api-gateway .
+   docker build -t billme-auth-service:latest --build-arg APP_NAME=auth-service .
+   # ... repeat for all services
+   ```
+
+3. **Load images to Kubernetes** (if using Minikube)
+
+   ```bash
+   # For Minikube
+   minikube image load billme-api-gateway:latest
+   minikube image load billme-auth-service:latest
+   # ... repeat for all service images
+   ```
+
+4. **Deploy to Kubernetes**
+
+   ```bash
+   cd k8s
+   ./deploy.sh
+   ```
+
+   This will:
+   - Create the `billme-platform` namespace
+   - Deploy Redis
+   - Deploy all PostgreSQL databases
+   - Deploy all microservices
+   - Create all required services
+
+5. **Check deployment status**
+
+   ```bash
+   kubectl get pods -n billme-platform
+   kubectl get svc -n billme-platform
+   ```
+
+6. **Access the API Gateway**
+
+   For Minikube:
+
+   ```bash
+   minikube service api-gateway-service -n billme-platform --url
+   ```
+
+   For other clusters:
+
+   ```bash
+   kubectl port-forward svc/api-gateway-service 3000:3000 -n billme-platform
+   # Then access at http://localhost:3000
+   ```
+
+### Undeploy
+
+```bash
+cd k8s
+./undeploy.sh
+```
+
+Or manually:
+
+```bash
+kubectl delete namespace billme-platform
+```
+
+### Kubernetes Structure
+
+```
+k8s/
+├── namespace.yaml              # Namespace definition
+├── configmaps/                 # ConfigMaps for services
+│   ├── redis-config.yaml
+│   ├── gateway-config.yaml
+│   ├── auth-service-config.yaml
+│   └── ...
+├── services/                   # Kubernetes Services
+│   ├── redis-service.yaml
+│   ├── gateway-service.yaml
+│   └── ...
+├── deployments/                # Deployments
+│   ├── redis-deployment.yaml
+│   ├── auth-db-deployment.yaml
+│   ├── auth-service-deployment.yaml
+│   └── ...
+├── deploy.sh                   # Deployment script
+└── undeploy.sh                 # Cleanup script
+```
+
+### Features
+
+- **High Availability**: Services deployed with 2 replicas (configurable)
+- **Health Checks**: Liveness and readiness probes configured
+- **Resource Limits**: CPU and memory limits set for all containers
+- **Service Discovery**: Services accessible via DNS within cluster
+- **Load Balancing**: Built-in Kubernetes load balancing
+- **Scaling**: Easy horizontal scaling with `kubectl scale`
 
 ## 📚 API Documentation
 
@@ -378,15 +536,15 @@ This is a professional enterprise SaaS platform. Contributions should follow:
 
 MIT License - ID Services Ltd.
 
-## 👥 Authors
+## 👥 Author
 
-- ID Services Ltd
-- 2nd Floor, Makuza Plaza
-- Kigali, Rwanda
+**D Regis**  
+📧 GitHub: [github.com/cielo-b](https://github.com/cielo-b)  
+📱 Phone: 0790539402
 
 ---
 
 **Version**: 1.0.0  
 **Last Updated**: October 2025
 
-For support or inquiries, please contact: support@idservices.rw
+For support or inquiries, please contact via GitHub or phone.

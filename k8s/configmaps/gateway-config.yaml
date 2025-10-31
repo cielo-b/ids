@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gateway-config
+  namespace: billme-platform
+data:
+  NODE_ENV: development
+  PORT: "3000"
+  JWT_SECRET: billme-secret-key-change-in-production
+  JWT_EXPIRATION: "24h"
+  AUTH_SERVICE_URL: http://auth-service:3001
+  USER_SERVICE_URL: http://user-service:3002
+  ENTITY_SERVICE_URL: http://entity-service:3003
+  SUBSCRIPTION_SERVICE_URL: http://subscription-service:3004
+  MANAGER_SERVICE_URL: http://manager-service:3005
+  EMPLOYEE_SERVICE_URL: http://employee-service:3006
+  MENU_SERVICE_URL: http://menu-service:3007
+  ORDER_SERVICE_URL: http://order-service:3008
+  PAYMENT_SERVICE_URL: http://payment-service:3009
+  RECEIPT_SERVICE_URL: http://receipt-service:3010
+  NOTIFICATION_SERVICE_URL: http://notification-service:3011
+  AUDIT_SERVICE_URL: http://audit-service:3012
+  REPORT_SERVICE_URL: http://report-service:3013

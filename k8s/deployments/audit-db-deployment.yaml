@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: audit-db
+  namespace: billme-platform
+  labels:
+    app: audit-db
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: audit-db
+  template:
+    metadata:
+      labels:
+        app: audit-db
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              value: billme_audit
+            - name: POSTGRES_PASSWORD
+              value: billme_audit_pass
+            - name: POSTGRES_DB
+              value: billme_audit
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+      volumes:
+        - name: postgres-data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: audit-db-service
+  namespace: billme-platform
+  labels:
+    app: audit-db
+spec:
+  type: ClusterIP
+  ports:
+    - port: 5432
+      targetPort: 5432
+      protocol: TCP
+  selector:
+    app: audit-db
