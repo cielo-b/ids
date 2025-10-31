@@ -9,7 +9,7 @@ import { ProxyService } from './services/proxy.service';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: '.env',
+      envFilePath: ['.env', 'apps/api-gateway/.env'],
     }),
     HttpModule.register({
       timeout: 30000,
@@ -26,4 +26,3 @@ import { ProxyService } from './services/proxy.service';
   providers: [ProxyService],
 })
 export class GatewayModule {}
-
