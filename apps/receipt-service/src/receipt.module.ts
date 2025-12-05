@@ -1,7 +1,15 @@
 import { Module } from "@nestjs/common";
 import { ConfigModule, ConfigService } from "@nestjs/config";
 import { TypeOrmModule } from "@nestjs/typeorm";
-import { CacheModule } from "@app/common";
+import { PassportModule } from "@nestjs/passport";
+import { JwtModule } from "@nestjs/jwt";
+import { HttpModule } from "@nestjs/axios";
+import {
+  CacheModule,
+  JwtStrategy,
+  EventModule,
+  HealthModule,
+} from "@app/common";
 import { ReceiptController } from "./receipt.controller";
 import { ReceiptService } from "./receipt.service";
 import { Receipt } from "./entities/receipt.entity";
@@ -12,7 +20,20 @@ import { Receipt } from "./entities/receipt.entity";
       isGlobal: true,
       envFilePath: ".env",
     }),
+    PassportModule.register({ defaultStrategy: "jwt" }),
+    JwtModule.registerAsync({
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => ({
+        secret: configService.get("JWT_SECRET", "your-secret-key"),
+        signOptions: {
+          expiresIn: configService.get("JWT_EXPIRATION", "24h"),
+        },
+      }),
+    }),
+    HttpModule,
     CacheModule,
+    EventModule,
+    HealthModule,
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => ({
@@ -30,7 +51,7 @@ import { Receipt } from "./entities/receipt.entity";
     TypeOrmModule.forFeature([Receipt]),
   ],
   controllers: [ReceiptController],
-  providers: [ReceiptService],
+  providers: [ReceiptService, JwtStrategy],
   exports: [ReceiptService],
 })
 export class ReceiptModule {}

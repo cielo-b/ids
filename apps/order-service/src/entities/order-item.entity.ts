@@ -26,17 +26,24 @@ export class OrderItem {
   @Column()
   menuItemName: string;
 
+  @Column({ nullable: true })
+  imageUrl?: string;
+
   @Column({ type: 'decimal', precision: 10, scale: 2 })
-  price: number;
+  basePrice: number;
 
   @Column({ type: 'int', default: 1 })
   quantity: number;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2 })
-  totalPrice: number;
+  @Column({ type: 'jsonb', nullable: true })
+  addons?: Array<{
+    id: string;
+    name: string;
+    price: number;
+  }>;
 
   @Column({ type: 'text', nullable: true })
-  specialInstructions?: string;
+  notes?: string;
 
   @Column({ nullable: true })
   addedBy?: string; // For bulk orders

@@ -9,9 +9,6 @@ dist/
 build/
 
 # environment variables
-.env
-.env.local
-.env.production
 
 # logs
 *.log
@@ -34,3 +31,7 @@ coverage/
 # Temporary folders
 tmp/
 temp/
+
+# Swagger JSON
+swagger-json/
+config.bat

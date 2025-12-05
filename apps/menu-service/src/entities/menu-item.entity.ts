@@ -11,6 +11,7 @@ import {
 
 @Entity('menu_items')
 @Index(['entityId'])
+@Index(['branchId'])
 @Index(['category'])
 export class MenuItem {
   @PrimaryGeneratedColumn('uuid')

@@ -40,7 +40,7 @@ services:
     image: redis:7-alpine
     container_name: billme-redis
     ports:
-      - "6379:6379"
+      - "6370:6379"
     volumes:
       - redis-data:/data
     networks:
@@ -66,7 +66,7 @@ services:
       - POSTGRES_PASSWORD=billme_auth_pass
       - POSTGRES_DB=billme_auth
       - REDIS_HOST=redis
-      - REDIS_PORT=6379
+      - REDIS_PORT=6370
       - JWT_SECRET=${JWT_SECRET:-billme-secret-key-change-in-production}
       - JWT_EXPIRATION=24h
       - JWT_REFRESH_EXPIRATION=7d
@@ -112,7 +112,7 @@ services:
       - POSTGRES_PASSWORD=billme_user_pass
       - POSTGRES_DB=billme_users
       - REDIS_HOST=redis
-      - REDIS_PORT=6379
+      - REDIS_PORT=6370
     depends_on:
       - user-db
       - redis
@@ -154,7 +154,7 @@ services:
       - POSTGRES_PASSWORD=billme_entity_pass
       - POSTGRES_DB=billme_entities
       - REDIS_HOST=redis
-      - REDIS_PORT=6379
+      - REDIS_PORT=6370
     depends_on:
       - entity-db
       - redis
@@ -196,7 +196,7 @@ services:
       - POSTGRES_PASSWORD=billme_subscription_pass
       - POSTGRES_DB=billme_subscriptions
       - REDIS_HOST=redis
-      - REDIS_PORT=6379
+      - REDIS_PORT=6370
     depends_on:
       - subscription-db
       - redis
@@ -207,6 +207,8 @@ services:
   subscription-db:
     image: postgres:16-alpine
     container_name: billme-subscription-db
+    ports:
+      - "5436:5432"
     volumes:
       - subscription-db-data:/var/lib/postgresql/data
     environment:
@@ -236,7 +238,7 @@ services:
       - POSTGRES_PASSWORD=billme_manager_pass
       - POSTGRES_DB=billme_managers
       - REDIS_HOST=redis
-      - REDIS_PORT=6379
+      - REDIS_PORT=6370
     depends_on:
       - manager-db
       - redis
@@ -247,6 +249,8 @@ services:
   manager-db:
     image: postgres:16-alpine
     container_name: billme-manager-db
+    ports:
+      - "5437:5432"
     volumes:
       - manager-db-data:/var/lib/postgresql/data
     environment:
@@ -276,7 +280,7 @@ services:
       - POSTGRES_PASSWORD=billme_employee_pass
       - POSTGRES_DB=billme_employees
       - REDIS_HOST=redis
-      - REDIS_PORT=6379
+      - REDIS_PORT=6370
     depends_on:
       - employee-db
       - redis
@@ -287,6 +291,8 @@ services:
   employee-db:
     image: postgres:16-alpine
     container_name: billme-employee-db
+    ports:
+      - "5438:5432"
     volumes:
       - employee-db-data:/var/lib/postgresql/data
     environment:
@@ -316,7 +322,7 @@ services:
       - POSTGRES_PASSWORD=billme_menu_pass
       - POSTGRES_DB=billme_menus
       - REDIS_HOST=redis
-      - REDIS_PORT=6379
+      - REDIS_PORT=6370
     depends_on:
       - menu-db
       - redis
@@ -327,6 +333,8 @@ services:
   menu-db:
     image: postgres:16-alpine
     container_name: billme-menu-db
+    ports:
+      - "5439:5432"
     volumes:
       - menu-db-data:/var/lib/postgresql/data
     environment:
@@ -356,7 +364,7 @@ services:
       - POSTGRES_PASSWORD=billme_order_pass
       - POSTGRES_DB=billme_orders
       - REDIS_HOST=redis
-      - REDIS_PORT=6379
+      - REDIS_PORT=6370
     depends_on:
       - order-db
       - redis
@@ -367,6 +375,8 @@ services:
   order-db:
     image: postgres:16-alpine
     container_name: billme-order-db
+    ports:
+      - "5440:5432"
     volumes:
       - order-db-data:/var/lib/postgresql/data
     environment:
@@ -396,7 +406,7 @@ services:
       - POSTGRES_PASSWORD=billme_payment_pass
       - POSTGRES_DB=billme_payments
       - REDIS_HOST=redis
-      - REDIS_PORT=6379
+      - REDIS_PORT=6370
     depends_on:
       - payment-db
       - redis
@@ -407,6 +417,8 @@ services:
   payment-db:
     image: postgres:16-alpine
     container_name: billme-payment-db
+    ports:
+      - "5441:5432"
     volumes:
       - payment-db-data:/var/lib/postgresql/data
     environment:
@@ -436,7 +448,7 @@ services:
       - POSTGRES_PASSWORD=billme_receipt_pass
       - POSTGRES_DB=billme_receipts
       - REDIS_HOST=redis
-      - REDIS_PORT=6379
+      - REDIS_PORT=6370
     depends_on:
       - receipt-db
       - redis
@@ -447,6 +459,8 @@ services:
   receipt-db:
     image: postgres:16-alpine
     container_name: billme-receipt-db
+    ports:
+      - "5442:5432"
     volumes:
       - receipt-db-data:/var/lib/postgresql/data
     environment:
@@ -476,7 +490,7 @@ services:
       - POSTGRES_PASSWORD=billme_notification_pass
       - POSTGRES_DB=billme_notifications
       - REDIS_HOST=redis
-      - REDIS_PORT=6379
+      - REDIS_PORT=6370
       - SMTP_HOST=${SMTP_HOST:-smtp.gmail.com}
       - SMTP_PORT=${SMTP_PORT:-587}
       - SMTP_USER=${SMTP_USER}
@@ -493,6 +507,8 @@ services:
   notification-db:
     image: postgres:16-alpine
     container_name: billme-notification-db
+    ports:
+      - "5443:5432"
     volumes:
       - notification-db-data:/var/lib/postgresql/data
     environment:
@@ -522,7 +538,7 @@ services:
       - POSTGRES_PASSWORD=billme_audit_pass
       - POSTGRES_DB=billme_audit
       - REDIS_HOST=redis
-      - REDIS_PORT=6379
+      - REDIS_PORT=6370
     depends_on:
       - audit-db
       - redis
@@ -533,6 +549,8 @@ services:
   audit-db:
     image: postgres:16-alpine
     container_name: billme-audit-db
+    ports:
+      - "5444:5432"
     volumes:
       - audit-db-data:/var/lib/postgresql/data
     environment:
@@ -562,7 +580,7 @@ services:
       - POSTGRES_PASSWORD=billme_report_pass
       - POSTGRES_DB=billme_reports
       - REDIS_HOST=redis
-      - REDIS_PORT=6379
+      - REDIS_PORT=6370
     depends_on:
       - report-db
       - redis
@@ -573,6 +591,8 @@ services:
   report-db:
     image: postgres:16-alpine
     container_name: billme-report-db
+    ports:
+      - "5445:5432"
     volumes:
       - report-db-data:/var/lib/postgresql/data
     environment:

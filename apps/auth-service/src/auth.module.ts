@@ -4,7 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { HttpModule } from '@nestjs/axios';
-import { CacheModule } from '@app/common';
+import { CacheModule, HealthModule } from '@app/common';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { AuthCredential } from './entities/auth-credential.entity';
@@ -19,6 +19,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
       envFilePath: '.env',
     }),
     CacheModule,
+    HealthModule,
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => ({

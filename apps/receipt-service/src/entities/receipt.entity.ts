@@ -6,24 +6,22 @@ import {
   UpdateDateColumn,
   Index,
 } from "typeorm";
+import { ReceiptStatus, ReceiptPaymentMethod } from "@app/common";
 
 @Entity("receipts")
 @Index(["orderId"])
-@Index(["paymentId"])
 @Index(["entityId"])
-@Index(["customerId"])
+@Index(["branchId"])
+@Index(["status"])
 export class Receipt {
   @PrimaryGeneratedColumn("uuid")
   id: string;
-
-  @Column({ unique: true })
-  receiptNumber: string;
 
   @Column()
   orderId: string;
 
   @Column()
-  paymentId: string;
+  orderCode: string; // Order code like "DI104"
 
   @Column()
   entityId: string;
@@ -31,70 +29,44 @@ export class Receipt {
   @Column({ nullable: true })
   branchId?: string;
 
-  @Column()
-  customerId: string;
+  @Column({ nullable: true })
+  branchName?: string;
 
-  @Column({ type: "jsonb" })
-  items: Array<{
-    name: string;
-    quantity: number;
-    price: number;
-    total: number;
-  }>;
+  @Column()
+  customerName: string;
+
+  @Column({ nullable: true })
+  handledById?: string;
+
+  @Column({ nullable: true })
+  handledByName?: string;
+
+  @Column({ type: "enum", enum: ReceiptPaymentMethod })
+  paymentMethod: ReceiptPaymentMethod;
 
   @Column({ type: "decimal", precision: 10, scale: 2 })
   subtotal: number;
 
   @Column({ type: "decimal", precision: 10, scale: 2, default: 0 })
-  discount: number;
-
-  @Column({ type: "decimal", precision: 10, scale: 2, default: 0 })
   tax: number;
 
-  @Column({ type: "decimal", precision: 10, scale: 2, default: 0 })
-  tipAmount: number;
-
   @Column({ type: "decimal", precision: 10, scale: 2 })
-  total: number;
+  amountPaid: number;
 
-  @Column({ type: "text", nullable: true })
-  qrCode?: string;
+  @Column({ default: "FRW" })
+  currency: string;
 
-  @Column({ type: "jsonb", nullable: true })
-  entityInfo?: {
-    name: string;
-    email?: string;
-    phone?: string;
-    address?: string;
-    taxId?: string;
-  };
+  @Column({ type: "enum", enum: ReceiptStatus, default: ReceiptStatus.ISSUED })
+  status: ReceiptStatus;
 
-  @Column({ type: "jsonb", nullable: true })
-  customerInfo?: {
-    name: string;
-    email?: string;
-    phone?: string;
-  };
+  @Column({ type: "text" })
+  qrPayload: string;
 
-  @Column({ type: "jsonb", nullable: true })
-  paymentInfo?: {
-    method: string;
-    transactionId?: string;
-    cardLast4?: string;
-    paidAt: Date;
-  };
+  @Column({ type: "timestamp" })
+  servedAt: Date;
 
-  @Column({ default: false })
-  isRefunded: boolean;
-
-  @Column({ nullable: true })
-  refundReceiptId?: string;
-
-  @Column({ type: "text", nullable: true })
-  notes?: string;
-
-  @Column({ default: true })
-  isActive: boolean;
+  @Column({ type: "timestamp" })
+  generatedAt: Date;
 
   @CreateDateColumn()
   createdAt: Date;
