@@ -36,7 +36,7 @@ data:
   POSTGRES_USER: ${db_user}
   POSTGRES_DB: ${db_name}
   REDIS_HOST: redis-service
-  REDIS_PORT: "6379"
+  REDIS_PORT: "6370"
 
 ---
 apiVersion: v1

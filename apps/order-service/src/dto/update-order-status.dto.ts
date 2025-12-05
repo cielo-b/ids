@@ -3,7 +3,7 @@ import { OrderStatus } from '@app/common';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class UpdateOrderStatusDto {
-  @ApiProperty({ enum: OrderStatus, example: OrderStatus.PROCESSING })
+  @ApiProperty({ enum: OrderStatus, example: OrderStatus.PREPARING })
   @IsEnum(OrderStatus)
   @IsNotEmpty()
   status: OrderStatus;
@@ -17,4 +17,9 @@ export class UpdateOrderStatusDto {
   @IsOptional()
   @IsString()
   cancelledBy?: string;
+
+  @ApiPropertyOptional({ example: 'Additional notes about status change' })
+  @IsOptional()
+  @IsString()
+  notes?: string;
 }

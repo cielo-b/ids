@@ -11,6 +11,7 @@ export enum OTPType {
   EMAIL = 'EMAIL',
   PHONE = 'PHONE',
   TWO_FA = '2FA',
+  PASSWORD_RESET = 'PASSWORD_RESET',
 }
 
 @Entity('otps')

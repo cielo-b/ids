@@ -38,8 +38,8 @@ RUN npm ci --only=production
 ARG APP_NAME
 ENV APP_NAME=${APP_NAME}
 
-# Copy built application
-COPY --from=builder /app/dist/apps/${APP_NAME} ./dist
+# Copy built application (NestJS creates nested structure)
+COPY --from=builder /app/dist/apps/${APP_NAME}/apps/${APP_NAME} ./dist
 
 # Create non-root user
 RUN addgroup -g 1001 -S nodejs && \
@@ -55,5 +55,5 @@ USER nestjs
 EXPOSE 3000
 
 # Start the application
-CMD node dist/main.js
+CMD node dist/src/main.js
 

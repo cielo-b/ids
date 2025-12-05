@@ -4,6 +4,7 @@ import {
   ConflictException,
   BadRequestException,
   NotFoundException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -17,6 +18,11 @@ import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { VerifyOTPDto } from './dto/verify-otp.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { VerifyResetOTPDto } from './dto/verify-reset-otp.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
+import { CreateSuperAdminDto } from './dto/create-superadmin.dto';
+import { UserRole } from '@app/common';
 import {
   HashUtil,
   OTPUtil,
@@ -63,7 +69,7 @@ export class AuthService {
         'http://user-service:3002',
       );
       const userResponse = await firstValueFrom(
-        this.httpService.post(`${userServiceUrl}/api/v1/users`, {
+        this.httpService.post(`${userServiceUrl}/api/v1/users/internal`, {
           firstName: registerDto.firstName,
           lastName: registerDto.lastName,
           email: registerDto.email,
@@ -234,12 +240,49 @@ export class AuthService {
       await this.cacheService.set(userCacheKey, user, this.USER_CACHE_TTL);
     }
 
-    // Generate tokens
+    // Get branchId for managers and employees
+    let branchId: string | undefined;
+    if (user.role === 'MANAGER' || user.role === 'EMPLOYEE') {
+      try {
+        if (user.role === 'MANAGER') {
+          const managerServiceUrl = this.configService.get(
+            'MANAGER_SERVICE_URL',
+            'http://manager-service:3005',
+          );
+          const managerResponse = await firstValueFrom(
+            this.httpService.get(
+              `${managerServiceUrl}/api/v1/managers/user/${user.id}`,
+            ),
+          );
+          branchId = managerResponse.data.data?.branchId;
+        } else if (user.role === 'EMPLOYEE') {
+          const employeeServiceUrl = this.configService.get(
+            'EMPLOYEE_SERVICE_URL',
+            'http://employee-service:3006',
+          );
+          const employeeResponse = await firstValueFrom(
+            this.httpService.get(
+              `${employeeServiceUrl}/api/v1/employees/user/${user.id}`,
+            ),
+          );
+          branchId = employeeResponse.data.data?.branchId;
+        }
+      } catch (error) {
+        // If manager/employee record not found, branchId remains undefined
+        // This is acceptable as they might not be assigned to a branch yet
+        console.warn(
+          `Could not fetch branchId for ${user.role} ${user.id}:`,
+          error.message,
+        );
+      }
+    }
+
+    // Generate tokens (without role - role is returned in response)
     const payload: JwtPayload = {
       sub: user.id,
       email: user.email,
-      role: user.role,
       entityId: user.entityId,
+      branchId,
     };
 
     const accessToken = this.jwtService.sign(payload);
@@ -297,12 +340,63 @@ export class AuthService {
         }
       }
 
-      // Generate new tokens
+      // Get user details to include branchId
+      const userServiceUrl = this.configService.get(
+        'USER_SERVICE_URL',
+        'http://user-service:3002',
+      );
+      let branchId: string | undefined;
+      try {
+        const userResponse = await firstValueFrom(
+          this.httpService.get(`${userServiceUrl}/api/v1/users/${payload.sub}`),
+        );
+        const user = userResponse.data.data;
+
+        // Get branchId for managers and employees
+        if (user.role === 'MANAGER' || user.role === 'EMPLOYEE') {
+          if (user.role === 'MANAGER') {
+            const managerServiceUrl = this.configService.get(
+              'MANAGER_SERVICE_URL',
+              'http://manager-service:3005',
+            );
+            try {
+              const managerResponse = await firstValueFrom(
+                this.httpService.get(
+                  `${managerServiceUrl}/api/v1/managers/user/${user.id}`,
+                ),
+              );
+              branchId = managerResponse.data.data?.branchId;
+            } catch (error) {
+              // BranchId remains undefined if not found
+            }
+          } else if (user.role === 'EMPLOYEE') {
+            const employeeServiceUrl = this.configService.get(
+              'EMPLOYEE_SERVICE_URL',
+              'http://employee-service:3006',
+            );
+            try {
+              const employeeResponse = await firstValueFrom(
+                this.httpService.get(
+                  `${employeeServiceUrl}/api/v1/employees/user/${user.id}`,
+                ),
+              );
+              branchId = employeeResponse.data.data?.branchId;
+            } catch (error) {
+              // BranchId remains undefined if not found
+            }
+          }
+        }
+      } catch (error) {
+        // If user fetch fails, use payload values
+        branchId = payload.branchId;
+      }
+
+      // Generate new tokens (without role)
       const newPayload: JwtPayload = {
         sub: payload.sub,
         email: payload.email,
-        role: payload.role,
         entityId: payload.entityId,
+        branchId,
       };
 
       const accessToken = this.jwtService.sign(newPayload);
@@ -324,10 +418,22 @@ export class AuthService {
         `auth:credential:email:${authCredential.email}`,
       );
 
+      // Get user details to include in response
+      let user: any;
+      try {
+        const userResponse = await firstValueFrom(
+          this.httpService.get(`${userServiceUrl}/api/v1/users/${payload.sub}`),
+        );
+        user = userResponse.data.data;
+      } catch (error) {
+        // If user fetch fails, return tokens without user
+      }
+
       return ResponseUtil.success(
         {
           accessToken,
           refreshToken: newRefreshToken,
+          ...(user && { user }), // Include user with role if available
         },
         'Token refreshed successfully',
       );
@@ -544,5 +650,437 @@ export class AuthService {
     }
 
     return ResponseUtil.success(null, 'Session revoked successfully');
+  }
+
+  async forgotPassword(forgotPasswordDto: ForgotPasswordDto) {
+    const { identifier } = forgotPasswordDto;
+    const userServiceUrl = this.configService.get(
+      'USER_SERVICE_URL',
+      'http://user-service:3002',
+    );
+
+    // Determine if identifier is email or phone
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const phoneRegex = /^\d{10}$/;
+    const isEmail = emailRegex.test(identifier);
+    const isPhone = phoneRegex.test(identifier);
+
+    if (!isEmail && !isPhone) {
+      throw new BadRequestException(
+        'Identifier must be a valid email or 10-digit phone number',
+      );
+    }
+
+    // Find user by email or phone
+    let user;
+    try {
+      if (isEmail) {
+        const userResponse = await firstValueFrom(
+          this.httpService.get(
+            `${userServiceUrl}/api/v1/users/email/${identifier}`,
+          ),
+        );
+        user = userResponse.data.data;
+      } else {
+        const userResponse = await firstValueFrom(
+          this.httpService.get(
+            `${userServiceUrl}/api/v1/users/phone/${identifier}`,
+          ),
+        );
+        user = userResponse.data.data;
+      }
+    } catch (error) {
+      if (error.response?.status === 404) {
+        // Don't reveal if user exists or not for security
+        return ResponseUtil.success(
+          null,
+          'If the identifier exists, an OTP has been sent',
+        );
+      }
+      throw error;
+    }
+
+    // Find auth credential
+    const authCredential = await this.authRepository.findOne({
+      where: { userId: user.id },
+    });
+
+    if (!authCredential) {
+      // Don't reveal if user exists or not for security
+      return ResponseUtil.success(
+        null,
+        'If the identifier exists, an OTP has been sent',
+      );
+    }
+
+    // Determine OTP type based on identifier
+    const otpType = isEmail ? OTPType.EMAIL : OTPType.PHONE;
+
+    // Generate 4-digit OTP for password reset (to match frontend expectation)
+    const code = Math.floor(1000 + Math.random() * 9000).toString();
+    const expiresAt = new Date(
+      Date.now() +
+        parseInt(this.configService.get('OTP_EXPIRATION', '300')) * 1000,
+    );
+
+    // Invalidate any existing password reset OTPs for this user
+    await this.otpRepository.update(
+      {
+        userId: user.id,
+        type: OTPType.PASSWORD_RESET,
+        used: false,
+      },
+      { used: true },
+    );
+
+    const otp = this.otpRepository.create({
+      userId: user.id,
+      code,
+      type: OTPType.PASSWORD_RESET,
+      expiresAt,
+    });
+
+    await this.otpRepository.save(otp);
+
+    // In production, send OTP via email/SMS through notification service
+    // For now, return success (in dev, OTP is returned in response)
+    return ResponseUtil.success(
+      process.env.NODE_ENV === 'development' ? { code } : null,
+      'If the identifier exists, an OTP has been sent',
+    );
+  }
+
+  async verifyResetOTP(verifyResetOTPDto: VerifyResetOTPDto) {
+    const { identifier, otp } = verifyResetOTPDto;
+    const userServiceUrl = this.configService.get(
+      'USER_SERVICE_URL',
+      'http://user-service:3002',
+    );
+
+    // Determine if identifier is email or phone
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const phoneRegex = /^\d{10}$/;
+    const isEmail = emailRegex.test(identifier);
+    const isPhone = phoneRegex.test(identifier);
+
+    if (!isEmail && !isPhone) {
+      throw new BadRequestException(
+        'Identifier must be a valid email or 10-digit phone number',
+      );
+    }
+
+    // Find user by email or phone
+    let user;
+    try {
+      if (isEmail) {
+        const userResponse = await firstValueFrom(
+          this.httpService.get(
+            `${userServiceUrl}/api/v1/users/email/${identifier}`,
+          ),
+        );
+        user = userResponse.data.data;
+      } else {
+        const userResponse = await firstValueFrom(
+          this.httpService.get(
+            `${userServiceUrl}/api/v1/users/phone/${identifier}`,
+          ),
+        );
+        user = userResponse.data.data;
+      }
+    } catch (error) {
+      if (error.response?.status === 404) {
+        throw new NotFoundException('User not found');
+      }
+      throw error;
+    }
+
+    // Find OTP
+    const otpRecord = await this.otpRepository.findOne({
+      where: {
+        userId: user.id,
+        type: OTPType.PASSWORD_RESET,
+        used: false,
+      },
+      order: { createdAt: 'DESC' },
+    });
+
+    if (!otpRecord) {
+      throw new NotFoundException('OTP not found or already used');
+    }
+
+    if (new Date() > otpRecord.expiresAt) {
+      throw new BadRequestException('OTP has expired');
+    }
+
+    if (otpRecord.attempts >= 3) {
+      throw new BadRequestException('Maximum attempts exceeded');
+    }
+
+    if (otpRecord.code !== otp) {
+      otpRecord.attempts += 1;
+      await this.otpRepository.save(otpRecord);
+      throw new BadRequestException('Invalid OTP');
+    }
+
+    // OTP is valid, but don't mark as used yet - will be used in reset password
+    return ResponseUtil.success(null, 'OTP verified successfully');
+  }
+
+  async resetPassword(resetPasswordDto: ResetPasswordDto) {
+    const { identifier, otp, password, confirmPassword } = resetPasswordDto;
+
+    // Validate passwords match
+    if (password !== confirmPassword) {
+      throw new BadRequestException('Passwords do not match');
+    }
+
+    const userServiceUrl = this.configService.get(
+      'USER_SERVICE_URL',
+      'http://user-service:3002',
+    );
+
+    // Determine if identifier is email or phone
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const phoneRegex = /^\d{10}$/;
+    const isEmail = emailRegex.test(identifier);
+    const isPhone = phoneRegex.test(identifier);
+
+    if (!isEmail && !isPhone) {
+      throw new BadRequestException(
+        'Identifier must be a valid email or 10-digit phone number',
+      );
+    }
+
+    // Find user by email or phone
+    let user;
+    try {
+      if (isEmail) {
+        const userResponse = await firstValueFrom(
+          this.httpService.get(
+            `${userServiceUrl}/api/v1/users/email/${identifier}`,
+          ),
+        );
+        user = userResponse.data.data;
+      } else {
+        const userResponse = await firstValueFrom(
+          this.httpService.get(
+            `${userServiceUrl}/api/v1/users/phone/${identifier}`,
+          ),
+        );
+        user = userResponse.data.data;
+      }
+    } catch (error) {
+      if (error.response?.status === 404) {
+        throw new NotFoundException('User not found');
+      }
+      throw error;
+    }
+
+    // Find and verify OTP
+    const otpRecord = await this.otpRepository.findOne({
+      where: {
+        userId: user.id,
+        type: OTPType.PASSWORD_RESET,
+        used: false,
+      },
+      order: { createdAt: 'DESC' },
+    });
+
+    if (!otpRecord) {
+      throw new NotFoundException('OTP not found or already used');
+    }
+
+    if (new Date() > otpRecord.expiresAt) {
+      throw new BadRequestException('OTP has expired');
+    }
+
+    if (otpRecord.code !== otp) {
+      otpRecord.attempts += 1;
+      await this.otpRepository.save(otpRecord);
+      throw new BadRequestException('Invalid OTP');
+    }
+
+    // Find auth credential
+    const authCredential = await this.authRepository.findOne({
+      where: { userId: user.id },
+    });
+
+    if (!authCredential) {
+      throw new NotFoundException('Auth credential not found');
+    }
+
+    // Hash new password
+    const passwordHash = await HashUtil.hash(password);
+
+    // Update password
+    authCredential.passwordHash = passwordHash;
+    if (!authCredential.passwordHistory) {
+      authCredential.passwordHistory = [];
+    }
+    authCredential.passwordHistory.push(new Date());
+
+    await this.authRepository.save(authCredential);
+
+    // Mark OTP as used
+    otpRecord.used = true;
+    await this.otpRepository.save(otpRecord);
+
+    // Invalidate auth cache
+    await this.cacheService.delete(
+      `auth:credential:email:${authCredential.email}`,
+    );
+    await this.cacheService.delete(
+      `auth:credential:userId:${authCredential.userId}`,
+    );
+
+    return ResponseUtil.success(null, 'Password reset successfully');
+  }
+
+  async createSuperAdmin(createSuperAdminDto: CreateSuperAdminDto) {
+    // Verify admin key from environment variable
+    const expectedAdminKey = this.configService.get<string>('SUPER_ADMIN_KEY');
+
+    if (!expectedAdminKey) {
+      throw new ForbiddenException(
+        'Super admin key not configured. Please set SUPER_ADMIN_KEY environment variable.',
+      );
+    }
+
+    if (createSuperAdminDto.adminKey !== expectedAdminKey) {
+      throw new ForbiddenException('Invalid admin key');
+    }
+
+    // Check if user already exists in auth service
+    const existingAuth = await this.authRepository.findOne({
+      where: { email: createSuperAdminDto.email },
+    });
+
+    if (existingAuth) {
+      throw new ConflictException('User with this email already exists');
+    }
+
+    try {
+      // Create super admin user in user service
+      const userServiceUrl = this.configService.get(
+        'USER_SERVICE_URL',
+        'http://user-service:3002',
+      );
+      const userResponse = await firstValueFrom(
+        this.httpService.post(`${userServiceUrl}/api/v1/users/internal`, {
+          firstName: createSuperAdminDto.firstName,
+          lastName: createSuperAdminDto.lastName,
+          email: createSuperAdminDto.email,
+          phoneNumber: createSuperAdminDto.phoneNumber,
+          role: UserRole.SUPER_ADMIN,
+          // Super admin doesn't need entityId
+        }),
+      );
+
+      const user = userResponse.data.data;
+
+      // Hash password
+      const passwordHash = await HashUtil.hash(createSuperAdminDto.password);
+
+      // Create auth credentials
+      const authCredential = this.authRepository.create({
+        userId: user.id,
+        email: createSuperAdminDto.email,
+        passwordHash,
+        loginAttempts: {
+          count: 0,
+          lastAttempt: null,
+          locked: false,
+          lockedUntil: null,
+        },
+      });
+
+      await this.authRepository.save(authCredential);
+
+      // Cache the new credential
+      const cacheKey = `auth:credential:email:${createSuperAdminDto.email}`;
+      await this.cacheService.set(
+        cacheKey,
+        { ...authCredential, passwordHash: undefined },
+        this.CACHE_TTL,
+      );
+
+      // Auto-verify email in user service (super admin doesn't need email verification)
+      try {
+        await firstValueFrom(
+          this.httpService.patch(
+            `${userServiceUrl}/api/v1/users/${user.id}/verify-email`,
+          ),
+        );
+      } catch (error) {
+        // Log but don't fail if email verification update fails
+        console.warn('Failed to auto-verify super admin email:', error.message);
+      }
+
+      return ResponseUtil.success(
+        {
+          userId: user.id,
+          email: user.email,
+          role: user.role,
+        },
+        'Super admin created successfully',
+      );
+    } catch (error) {
+      if (error.response?.data) {
+        throw new BadRequestException(error.response.data.message);
+      }
+      throw error;
+    }
+  }
+
+  async getCurrentUser(currentUser: JwtPayload) {
+    // Get user details from user service
+    const userServiceUrl = this.configService.get(
+      'USER_SERVICE_URL',
+      'http://user-service:3002',
+    );
+
+    try {
+      const userCacheKey = `user:${currentUser.sub}`;
+      let user = await this.cacheService.get<any>(userCacheKey);
+
+      if (!user) {
+        const userResponse = await firstValueFrom(
+          this.httpService.get(
+            `${userServiceUrl}/api/v1/users/${currentUser.sub}`,
+          ),
+        );
+        user = userResponse.data.data;
+        // Cache user data
+        await this.cacheService.set(userCacheKey, user, this.USER_CACHE_TTL);
+      }
+
+      return ResponseUtil.success(
+        {
+          id: user.id,
+          email: user.email,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          phoneNumber: user.phoneNumber,
+          role: user.role,
+          entityId: user.entityId,
+          branchId: currentUser.branchId || user.branchId,
+          preferredLanguage: user.preferredLanguage,
+          address: user.address,
+          city: user.city,
+          country: user.country,
+          emailVerified: user.emailVerified,
+          phoneVerified: user.phoneVerified,
+          isActive: user.isActive,
+          createdAt: user.createdAt,
+          updatedAt: user.updatedAt,
+        },
+        'User retrieved successfully',
+      );
+    } catch (error) {
+      if (error.response?.status === 404) {
+        throw new NotFoundException('User not found');
+      }
+      throw new BadRequestException('Failed to retrieve user information');
+    }
   }
 }

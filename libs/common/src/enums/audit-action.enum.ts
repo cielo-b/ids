@@ -8,4 +8,5 @@ export enum AuditAction {
   PAYMENT = 'PAYMENT',
   REFUND = 'REFUND',
   SUBSCRIPTION_CHANGE = 'SUBSCRIPTION_CHANGE',
+  ERROR = 'ERROR',
 }

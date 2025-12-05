@@ -9,127 +9,261 @@ import {
   Query,
   HttpCode,
   HttpStatus,
-} from '@nestjs/common';
-import { EmployeeService } from './employee.service';
-import { CreateEmployeeDto } from './dto/create-employee.dto';
-import { UpdateEmployeeDto } from './dto/update-employee.dto';
-import { UpdateStatusDto } from './dto/update-status.dto';
-import { ApiTags, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
-import { EmployeeStatus } from '@app/common';
+  UseGuards,
+} from "@nestjs/common";
+import { EmployeeService } from "./employee.service";
+import { CreateEmployeeDto } from "./dto/create-employee.dto";
+import { UpdateEmployeeDto } from "./dto/update-employee.dto";
+import { UpdateStatusDto } from "./dto/update-status.dto";
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiQuery,
+  ApiBearerAuth,
+} from "@nestjs/swagger";
+import {
+  EmployeeStatus,
+  JwtAuthGuard,
+  RolesGuard,
+  Roles,
+  UserRole,
+  EntityGuard,
+  BranchGuard,
+  EntityAccess,
+  BranchAccess,
+  CurrentUser,
+  JwtPayload,
+} from "@app/common";
 
-@ApiTags('Employees')
-@Controller('employees')
+@ApiTags("Employees")
+@Controller("employees")
 export class EmployeeController {
   constructor(private readonly employeeService: EmployeeService) {}
 
   @Post()
-  @ApiOperation({ summary: 'Create a new employee' })
-  @ApiResponse({ status: 201, description: 'Employee created successfully' })
-  create(@Body() createEmployeeDto: CreateEmployeeDto) {
-    return this.employeeService.create(createEmployeeDto);
+  @UseGuards(JwtAuthGuard, RolesGuard, EntityGuard)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ENTITY_OWNER)
+  @EntityAccess()
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Create a new employee" })
+  @ApiResponse({ status: 201, description: "Employee created successfully" })
+  create(
+    @Body() createEmployeeDto: CreateEmployeeDto,
+    @CurrentUser() currentUser?: JwtPayload
+  ) {
+    return this.employeeService.create(createEmployeeDto, currentUser);
   }
 
   @Get()
-  @ApiOperation({ summary: 'Get all employees' })
-  @ApiQuery({ name: 'entityId', required: false })
-  @ApiQuery({ name: 'branchId', required: false })
-  @ApiQuery({ name: 'status', required: false, enum: EmployeeStatus })
+  @UseGuards(JwtAuthGuard, EntityGuard, BranchGuard)
+  @EntityAccess()
+  @BranchAccess()
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Get all employees" })
+  @ApiQuery({ name: "entityId", required: false })
+  @ApiQuery({ name: "branchId", required: false })
+  @ApiQuery({ name: "status", required: false, enum: EmployeeStatus })
   findAll(
-    @Query('entityId') entityId?: string,
-    @Query('branchId') branchId?: string,
-    @Query('status') status?: EmployeeStatus,
+    @Query("entityId") entityId?: string,
+    @Query("branchId") branchId?: string,
+    @Query("status") status?: EmployeeStatus,
+    @CurrentUser() currentUser?: JwtPayload
   ) {
-    return this.employeeService.findAll(entityId, branchId, status);
+    return this.employeeService.findAll(
+      entityId,
+      branchId,
+      status,
+      currentUser
+    );
   }
 
-  @Get('available/:entityId')
-  @ApiOperation({ summary: 'Get available employees' })
-  @ApiQuery({ name: 'branchId', required: false })
+  @Get("available/:entityId")
+  @UseGuards(JwtAuthGuard, EntityGuard, BranchGuard)
+  @EntityAccess()
+  @BranchAccess()
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Get available employees" })
+  @ApiQuery({ name: "branchId", required: false })
   getAvailable(
-    @Param('entityId') entityId: string,
-    @Query('branchId') branchId?: string,
+    @Param("entityId") entityId: string,
+    @Query("branchId") branchId?: string,
+    @CurrentUser() currentUser?: JwtPayload
   ) {
-    return this.employeeService.getAvailableEmployees(entityId, branchId);
+    return this.employeeService.getAvailableEmployees(
+      entityId,
+      branchId,
+      currentUser
+    );
   }
 
-  @Get('stats')
-  @ApiOperation({ summary: 'Get employee statistics' })
-  @ApiQuery({ name: 'entityId', required: false })
-  getStats(@Query('entityId') entityId?: string) {
-    return this.employeeService.getStats(entityId);
+  @Get("stats")
+  @UseGuards(JwtAuthGuard, EntityGuard, BranchGuard)
+  @EntityAccess()
+  @BranchAccess()
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Get employee statistics" })
+  @ApiQuery({ name: "entityId", required: false })
+  getStats(
+    @Query("entityId") entityId?: string,
+    @CurrentUser() currentUser?: JwtPayload
+  ) {
+    return this.employeeService.getStats(entityId, currentUser);
   }
 
-  @Get(':id')
-  @ApiOperation({ summary: 'Get employee by ID' })
-  findOne(@Param('id') id: string) {
-    return this.employeeService.findOne(id);
+  @Get(":id")
+  @UseGuards(JwtAuthGuard, EntityGuard, BranchGuard)
+  @EntityAccess()
+  @BranchAccess()
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Get employee by ID" })
+  findOne(@Param("id") id: string, @CurrentUser() currentUser?: JwtPayload) {
+    return this.employeeService.findOne(id, currentUser);
   }
 
-  @Get('user/:userId')
-  @ApiOperation({ summary: 'Get employee by user ID' })
-  findByUserId(@Param('userId') userId: string) {
+  @Get("user/:userId")
+  @UseGuards(JwtAuthGuard, EntityGuard)
+  @EntityAccess()
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Get employee by user ID" })
+  findByUserId(
+    @Param("userId") userId: string,
+    @CurrentUser() currentUser?: JwtPayload
+  ) {
     return this.employeeService.findByUserId(userId);
   }
 
-  @Get(':id/performance')
-  @ApiOperation({ summary: 'Get employee performance metrics' })
-  getPerformance(@Param('id') id: string) {
+  @Get(":id/performance")
+  @UseGuards(JwtAuthGuard, EntityGuard, BranchGuard)
+  @EntityAccess()
+  @BranchAccess()
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Get employee performance metrics" })
+  getPerformance(
+    @Param("id") id: string,
+    @CurrentUser() currentUser?: JwtPayload
+  ) {
     return this.employeeService.getPerformance(id);
   }
 
-  @Patch(':id')
-  @ApiOperation({ summary: 'Update employee' })
-  update(@Param('id') id: string, @Body() updateEmployeeDto: UpdateEmployeeDto) {
-    return this.employeeService.update(id, updateEmployeeDto);
+  @Patch(":id")
+  @UseGuards(JwtAuthGuard, RolesGuard, EntityGuard, BranchGuard)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ENTITY_OWNER, UserRole.MANAGER)
+  @EntityAccess()
+  @BranchAccess()
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Update employee" })
+  update(
+    @Param("id") id: string,
+    @Body() updateEmployeeDto: UpdateEmployeeDto,
+    @CurrentUser() currentUser?: JwtPayload
+  ) {
+    return this.employeeService.update(id, updateEmployeeDto, currentUser);
   }
 
-  @Patch(':id/status')
+  @Patch(":id/status")
+  @UseGuards(JwtAuthGuard, RolesGuard, EntityGuard, BranchGuard)
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.ENTITY_OWNER,
+    UserRole.MANAGER,
+    UserRole.EMPLOYEE
+  )
+  @EntityAccess()
+  @BranchAccess()
+  @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Update employee status' })
-  updateStatus(@Param('id') id: string, @Body() updateStatusDto: UpdateStatusDto) {
+  @ApiOperation({ summary: "Update employee status" })
+  updateStatus(
+    @Param("id") id: string,
+    @Body() updateStatusDto: UpdateStatusDto,
+    @CurrentUser() currentUser?: JwtPayload
+  ) {
     return this.employeeService.updateStatus(id, updateStatusDto);
   }
 
-  @Patch(':id/increment-orders')
+  @Patch(":id/increment-orders")
+  @UseGuards(JwtAuthGuard, EntityGuard, BranchGuard)
+  @EntityAccess()
+  @BranchAccess()
+  @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Increment active orders count' })
-  incrementActiveOrders(@Param('id') id: string) {
+  @ApiOperation({ summary: "Increment active orders count" })
+  incrementActiveOrders(
+    @Param("id") id: string,
+    @CurrentUser() currentUser?: JwtPayload
+  ) {
     return this.employeeService.incrementActiveOrders(id);
   }
 
-  @Patch(':id/decrement-orders')
+  @Patch(":id/decrement-orders")
+  @UseGuards(JwtAuthGuard, EntityGuard, BranchGuard)
+  @EntityAccess()
+  @BranchAccess()
+  @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Decrement active orders count' })
-  decrementActiveOrders(@Param('id') id: string) {
+  @ApiOperation({ summary: "Decrement active orders count" })
+  decrementActiveOrders(
+    @Param("id") id: string,
+    @CurrentUser() currentUser?: JwtPayload
+  ) {
     return this.employeeService.decrementActiveOrders(id);
   }
 
-  @Patch(':id/revenue/:amount')
+  @Patch(":id/revenue/:amount")
+  @UseGuards(JwtAuthGuard, RolesGuard, EntityGuard, BranchGuard)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ENTITY_OWNER, UserRole.MANAGER)
+  @EntityAccess()
+  @BranchAccess()
+  @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Update employee revenue' })
-  updateRevenue(@Param('id') id: string, @Param('amount') amount: number) {
+  @ApiOperation({ summary: "Update employee revenue" })
+  updateRevenue(
+    @Param("id") id: string,
+    @Param("amount") amount: number,
+    @CurrentUser() currentUser?: JwtPayload
+  ) {
     return this.employeeService.updateRevenue(id, amount);
   }
 
-  @Patch(':id/tip/:amount')
+  @Patch(":id/tip/:amount")
+  @UseGuards(JwtAuthGuard, EntityGuard, BranchGuard)
+  @EntityAccess()
+  @BranchAccess()
+  @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Add tip to employee' })
-  addTip(@Param('id') id: string, @Param('amount') amount: number) {
+  @ApiOperation({ summary: "Add tip to employee" })
+  addTip(
+    @Param("id") id: string,
+    @Param("amount") amount: number,
+    @CurrentUser() currentUser?: JwtPayload
+  ) {
     return this.employeeService.addTip(id, amount);
   }
 
-  @Patch(':id/rating/:rating')
+  @Patch(":id/rating/:rating")
+  @UseGuards(JwtAuthGuard, EntityGuard, BranchGuard)
+  @EntityAccess()
+  @BranchAccess()
+  @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Update employee rating' })
-  updateRating(@Param('id') id: string, @Param('rating') rating: number) {
+  @ApiOperation({ summary: "Update employee rating" })
+  updateRating(
+    @Param("id") id: string,
+    @Param("rating") rating: number,
+    @CurrentUser() currentUser?: JwtPayload
+  ) {
     return this.employeeService.updateRating(id, rating);
   }
 
-  @Delete(':id')
+  @Delete(":id")
+  @UseGuards(JwtAuthGuard, RolesGuard, EntityGuard)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ENTITY_OWNER)
+  @EntityAccess()
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Delete employee' })
-  remove(@Param('id') id: string) {
-    return this.employeeService.remove(id);
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Delete employee" })
+  remove(@Param("id") id: string, @CurrentUser() currentUser?: JwtPayload) {
+    return this.employeeService.remove(id, currentUser);
   }
 }
-

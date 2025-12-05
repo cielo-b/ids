@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   ConflictException,
+  ForbiddenException,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
@@ -9,7 +10,15 @@ import { Employee } from "./entities/employee.entity";
 import { CreateEmployeeDto } from "./dto/create-employee.dto";
 import { UpdateEmployeeDto } from "./dto/update-employee.dto";
 import { UpdateStatusDto } from "./dto/update-status.dto";
-import { ResponseUtil, EmployeeStatus, CacheService } from "@app/common";
+import {
+  ResponseUtil,
+  EmployeeStatus,
+  CacheService,
+  UserRole,
+  JwtPayload,
+  JwtPayloadWithRole,
+  QueryFilterUtil,
+} from "@app/common";
 
 @Injectable()
 export class EmployeeService {
@@ -22,7 +31,22 @@ export class EmployeeService {
     private cacheService: CacheService
   ) {}
 
-  async create(createEmployeeDto: CreateEmployeeDto) {
+  async create(createEmployeeDto: CreateEmployeeDto, currentUser?: JwtPayloadWithRole) {
+    // Check access permissions - only entity owners and superadmin can create employees
+    if (currentUser) {
+      if (currentUser.role === UserRole.ENTITY_OWNER) {
+        if (createEmployeeDto.entityId !== currentUser.entityId) {
+          throw new ForbiddenException(
+            "Access denied: Cannot create employees for other entities"
+          );
+        }
+      } else if (currentUser.role !== UserRole.SUPER_ADMIN) {
+        throw new ForbiddenException(
+          "Access denied: Only entity owners and superadmin can create employees"
+        );
+      }
+    }
+
     const existingEmployee = await this.employeeRepository.findOne({
       where: { userId: createEmployeeDto.userId },
     });
@@ -34,11 +58,37 @@ export class EmployeeService {
     const employee = this.employeeRepository.create(createEmployeeDto);
     const savedEmployee = await this.employeeRepository.save(employee);
 
+    // Invalidate cache
+    await this.cacheService.deletePattern("employee:list:*");
+
     return ResponseUtil.success(savedEmployee, "Employee created successfully");
   }
 
-  async findAll(entityId?: string, branchId?: string, status?: EmployeeStatus) {
+  async findAll(
+    entityId?: string,
+    branchId?: string,
+    status?: EmployeeStatus,
+    currentUser?: JwtPayloadWithRole
+  ) {
     const queryBuilder = this.employeeRepository.createQueryBuilder("employee");
+
+    // Apply data isolation
+    if (currentUser) {
+      QueryFilterUtil.applyEntityFilter(
+        queryBuilder,
+        currentUser,
+        "employee.entityId"
+      );
+
+      // Managers can only see employees in their branch
+      if (currentUser.role === UserRole.MANAGER) {
+        QueryFilterUtil.applyBranchFilter(
+          queryBuilder,
+          currentUser,
+          "employee.branchId"
+        );
+      }
+    }
 
     if (entityId) {
       queryBuilder.andWhere("employee.entityId = :entityId", { entityId });
@@ -59,11 +109,35 @@ export class EmployeeService {
     return ResponseUtil.success(employees);
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, currentUser?: JwtPayloadWithRole) {
     const employee = await this.employeeRepository.findOne({ where: { id } });
 
     if (!employee) {
       throw new NotFoundException("Employee not found");
+    }
+
+    // Check access permissions
+    if (currentUser) {
+      if (!QueryFilterUtil.canAccessEntity(currentUser, employee.entityId)) {
+        throw new ForbiddenException(
+          "Access denied: Cannot access employee from another entity"
+        );
+      }
+
+      // Managers can only access employees in their branch
+      if (currentUser.role === UserRole.MANAGER) {
+        if (
+          !QueryFilterUtil.canAccessBranch(
+            currentUser,
+            employee.branchId || "",
+            employee.entityId
+          )
+        ) {
+          throw new ForbiddenException(
+            "Access denied: Cannot access employee from another branch"
+          );
+        }
+      }
     }
 
     return ResponseUtil.success(employee);
@@ -81,7 +155,21 @@ export class EmployeeService {
     return ResponseUtil.success(employee);
   }
 
-  async getAvailableEmployees(entityId: string, branchId?: string) {
+  async getAvailableEmployees(
+    entityId: string,
+    branchId?: string,
+    currentUser?: JwtPayloadWithRole
+  ) {
+    // Check access permissions
+    if (
+      currentUser &&
+      !QueryFilterUtil.canAccessEntity(currentUser, entityId)
+    ) {
+      throw new ForbiddenException(
+        "Access denied: Cannot access employees from another entity"
+      );
+    }
+
     const queryBuilder = this.employeeRepository
       .createQueryBuilder("employee")
       .where("employee.entityId = :entityId", { entityId })
@@ -89,6 +177,15 @@ export class EmployeeService {
         status: EmployeeStatus.AVAILABLE,
       })
       .andWhere("employee.isActive = :isActive", { isActive: true });
+
+    // Apply branch filter for managers
+    if (currentUser && currentUser.role === UserRole.MANAGER) {
+      QueryFilterUtil.applyBranchFilter(
+        queryBuilder,
+        currentUser,
+        "employee.branchId"
+      );
+    }
 
     if (branchId) {
       queryBuilder.andWhere("employee.branchId = :branchId", { branchId });
@@ -101,15 +198,50 @@ export class EmployeeService {
     return ResponseUtil.success(employees);
   }
 
-  async update(id: string, updateEmployeeDto: UpdateEmployeeDto) {
+  async update(
+    id: string,
+    updateEmployeeDto: UpdateEmployeeDto,
+    currentUser?: JwtPayloadWithRole
+  ) {
     const employee = await this.employeeRepository.findOne({ where: { id } });
 
     if (!employee) {
       throw new NotFoundException("Employee not found");
     }
 
+    // Check access permissions
+    if (currentUser) {
+      if (!QueryFilterUtil.canAccessEntity(currentUser, employee.entityId)) {
+        throw new ForbiddenException(
+          "Access denied: Cannot update employee from another entity"
+        );
+      }
+
+      // Managers can only update employees in their branch
+      if (currentUser.role === UserRole.MANAGER) {
+        if (
+          !QueryFilterUtil.canAccessBranch(
+            currentUser,
+            employee.branchId || "",
+            employee.entityId
+          )
+        ) {
+          throw new ForbiddenException(
+            "Access denied: Cannot update employee from another branch"
+          );
+        }
+      } else if (currentUser.role === UserRole.EMPLOYEE) {
+        throw new ForbiddenException(
+          "Access denied: Employees cannot update other employees"
+        );
+      }
+    }
+
     Object.assign(employee, updateEmployeeDto);
     const updatedEmployee = await this.employeeRepository.save(employee);
+
+    // Invalidate cache
+    await this.cacheService.deletePattern("employee:list:*");
 
     return ResponseUtil.success(
       updatedEmployee,
@@ -237,23 +369,59 @@ export class EmployeeService {
     return ResponseUtil.success(summary);
   }
 
-  async remove(id: string) {
+  async remove(id: string, currentUser?: JwtPayloadWithRole) {
     const employee = await this.employeeRepository.findOne({ where: { id } });
 
     if (!employee) {
       throw new NotFoundException("Employee not found");
     }
 
+    // Check access permissions - only entity owners and superadmin can delete
+    if (currentUser) {
+      if (currentUser.role === UserRole.ENTITY_OWNER) {
+        if (employee.entityId !== currentUser.entityId) {
+          throw new ForbiddenException(
+            "Access denied: Cannot delete employee from another entity"
+          );
+        }
+      } else if (currentUser.role !== UserRole.SUPER_ADMIN) {
+        throw new ForbiddenException(
+          "Access denied: Only entity owners and superadmin can delete employees"
+        );
+      }
+    }
+
     await this.employeeRepository.remove(employee);
+
+    // Invalidate cache
+    await this.cacheService.deletePattern("employee:list:*");
 
     return ResponseUtil.success(null, "Employee deleted successfully");
   }
 
-  async getStats(entityId?: string) {
+  async getStats(entityId?: string, currentUser?: JwtPayloadWithRole) {
     const queryBuilder = this.employeeRepository.createQueryBuilder("employee");
 
+    // Apply data isolation
+    if (currentUser) {
+      QueryFilterUtil.applyEntityFilter(
+        queryBuilder,
+        currentUser,
+        "employee.entityId"
+      );
+
+      // Managers can only see stats for their branch
+      if (currentUser.role === UserRole.MANAGER) {
+        QueryFilterUtil.applyBranchFilter(
+          queryBuilder,
+          currentUser,
+          "employee.branchId"
+        );
+      }
+    }
+
     if (entityId) {
-      queryBuilder.where("employee.entityId = :entityId", { entityId });
+      queryBuilder.andWhere("employee.entityId = :entityId", { entityId });
     }
 
     const totalEmployees = await queryBuilder.getCount();
@@ -270,11 +438,32 @@ export class EmployeeService {
       .andWhere("employee.status = :status", { status: EmployeeStatus.BUSY })
       .getCount();
 
-    const topPerformers = await this.employeeRepository.find({
-      where: entityId ? { entityId } : {},
-      order: { totalRevenue: "DESC" },
-      take: 10,
-    });
+    // Get top performers with same filters
+    const topPerformersQuery =
+      this.employeeRepository.createQueryBuilder("employee");
+    if (currentUser) {
+      QueryFilterUtil.applyEntityFilter(
+        topPerformersQuery,
+        currentUser,
+        "employee.entityId"
+      );
+      if (currentUser.role === UserRole.MANAGER) {
+        QueryFilterUtil.applyBranchFilter(
+          topPerformersQuery,
+          currentUser,
+          "employee.branchId"
+        );
+      }
+    }
+    if (entityId) {
+      topPerformersQuery.andWhere("employee.entityId = :entityId", {
+        entityId,
+      });
+    }
+    const topPerformers = await topPerformersQuery
+      .orderBy("employee.totalRevenue", "DESC")
+      .take(10)
+      .getMany();
 
     return ResponseUtil.success({
       totalEmployees,

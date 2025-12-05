@@ -11,7 +11,7 @@ data:
   POSTGRES_USER: billme_employee
   POSTGRES_DB: billme_employees
   REDIS_HOST: redis-service
-  REDIS_PORT: "6379"
+  REDIS_PORT: "6370"
 
 ---
 apiVersion: v1
