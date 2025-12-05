@@ -14,16 +14,18 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     });
   }
 
-  async validate(payload: JwtPayload): Promise<JwtPayload> {
+  async validate(payload: JwtPayload): Promise<any> {
     if (!payload) {
       throw new UnauthorizedException();
     }
 
+    // Note: role is not in JWT token, it's fetched by the common JwtStrategy
+    // This strategy is only used in auth-service for token validation
     return {
       sub: payload.sub,
       email: payload.email,
-      role: payload.role,
       entityId: payload.entityId,
+      branchId: payload.branchId,
     };
   }
 }

@@ -1,10 +1,14 @@
 import { NestFactory } from "@nestjs/core";
 import { ValidationPipe } from "@nestjs/common";
 import { SwaggerModule, DocumentBuilder } from "@nestjs/swagger";
+import { HttpExceptionFilter } from "@app/common";
 import { ReceiptModule } from "./receipt.module";
 
 async function bootstrap() {
   const app = await NestFactory.create(ReceiptModule);
+
+  // Global exception filter
+  app.useGlobalFilters(new HttpExceptionFilter());
 
   app.setGlobalPrefix("api/v1");
 

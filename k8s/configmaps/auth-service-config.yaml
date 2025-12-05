@@ -11,7 +11,7 @@ data:
   POSTGRES_USER: billme_auth
   POSTGRES_DB: billme_auth
   REDIS_HOST: redis-service
-  REDIS_PORT: "6379"
+  REDIS_PORT: "6370"
   JWT_SECRET: billme-secret-key-change-in-production
   JWT_EXPIRATION: "24h"
   JWT_REFRESH_EXPIRATION: "7d"

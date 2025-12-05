@@ -25,8 +25,8 @@ export class BusinessEntity {
   @Column({ type: 'enum', enum: EntityCategory })
   category: EntityCategory;
 
-  @Column()
-  ownerId: string;
+  @Column({ nullable: true })
+  ownerId?: string;
 
   @Column({ nullable: true })
   logo?: string;

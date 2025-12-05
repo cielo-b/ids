@@ -11,6 +11,23 @@ import {
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
+export class OrderAddonDto {
+  @ApiProperty({ example: 'addon-uuid' })
+  @IsString()
+  @IsNotEmpty()
+  id: string;
+
+  @ApiProperty({ example: 'Extra Cheese' })
+  @IsString()
+  @IsNotEmpty()
+  name: string;
+
+  @ApiProperty({ example: 2.5 })
+  @IsNumber()
+  @Min(0)
+  price: number;
+}
+
 export class OrderItemDto {
   @ApiProperty({ example: 'menu-item-uuid' })
   @IsString()
@@ -22,25 +39,81 @@ export class OrderItemDto {
   @IsNotEmpty()
   menuItemName: string;
 
+  @ApiPropertyOptional({ example: 'https://example.com/image.jpg' })
+  @IsOptional()
+  @IsString()
+  imageUrl?: string;
+
   @ApiProperty({ example: 15.99 })
   @IsNumber()
   @Min(0)
-  price: number;
+  basePrice: number;
 
   @ApiProperty({ example: 2 })
   @IsNumber()
   @Min(1)
   quantity: number;
 
+  @ApiPropertyOptional({ type: [OrderAddonDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => OrderAddonDto)
+  addons?: OrderAddonDto[];
+
   @ApiPropertyOptional({ example: 'No onions' })
   @IsOptional()
   @IsString()
-  specialInstructions?: string;
+  notes?: string;
+}
 
-  @ApiPropertyOptional({ example: 'user-uuid' })
+export class OrderCustomerDto {
+  @ApiProperty({ example: 'John Doe' })
+  @IsString()
+  @IsNotEmpty()
+  name: string;
+
+  @ApiPropertyOptional({ example: '+1234567890' })
   @IsOptional()
   @IsString()
-  addedBy?: string;
+  phoneNumber?: string;
+
+  @ApiPropertyOptional({ example: 'john@example.com' })
+  @IsOptional()
+  @IsString()
+  email?: string;
+}
+
+export class OrderAssignmentDto {
+  @ApiProperty({ example: 'user-uuid' })
+  @IsString()
+  @IsNotEmpty()
+  createdByUserId: string;
+
+  @ApiProperty({ example: 'MANAGER' })
+  @IsString()
+  @IsNotEmpty()
+  createdByRole: string;
+
+  @ApiPropertyOptional({ example: 'employee-uuid' })
+  @IsOptional()
+  @IsString()
+  assignedEmployeeId?: string;
+
+  @ApiPropertyOptional({ example: 'John Employee' })
+  @IsOptional()
+  @IsString()
+  assignedEmployeeName?: string;
+
+  @ApiPropertyOptional({ example: 'branch-uuid' })
+  @IsOptional()
+  @IsString()
+  branchId?: string;
+
+  @ApiPropertyOptional({ example: 'Main Branch' })
+  @IsOptional()
+  @IsString()
+  branchName?: string;
 }
 
 export class CreateOrderDto {
@@ -54,25 +127,30 @@ export class CreateOrderDto {
   @IsString()
   branchId?: string;
 
-  @ApiProperty({ example: 'customer-uuid' })
-  @IsString()
-  @IsNotEmpty()
-  customerId: string;
-
-  @ApiProperty({ example: 'employee-uuid' })
-  @IsString()
-  @IsNotEmpty()
-  employeeId: string;
-
-  @ApiPropertyOptional({ example: '12' })
+  @ApiPropertyOptional({ example: 'Main Branch' })
   @IsOptional()
   @IsString()
-  tableNumber?: string;
+  branchName?: string;
 
-  @ApiPropertyOptional({ example: 'A1' })
+  @ApiProperty({ type: OrderCustomerDto })
+  @ValidateNested()
+  @Type(() => OrderCustomerDto)
+  customer: OrderCustomerDto;
+
+  @ApiProperty({ type: OrderAssignmentDto })
+  @ValidateNested()
+  @Type(() => OrderAssignmentDto)
+  assignment: OrderAssignmentDto;
+
+  @ApiPropertyOptional({ example: 'table-uuid' })
   @IsOptional()
   @IsString()
-  stationNumber?: string;
+  tableId?: string;
+
+  @ApiPropertyOptional({ example: 'Table 1' })
+  @IsOptional()
+  @IsString()
+  tableName?: string;
 
   @ApiProperty({ type: [OrderItemDto] })
   @IsArray()
@@ -93,15 +171,5 @@ export class CreateOrderDto {
   @ApiPropertyOptional({ example: 'Please deliver quickly' })
   @IsOptional()
   @IsString()
-  specialInstructions?: string;
-
-  @ApiPropertyOptional({ example: false })
-  @IsOptional()
-  @IsBoolean()
-  isBulkOrder?: boolean;
-
-  @ApiPropertyOptional({ example: 'user-uuid' })
-  @IsOptional()
-  @IsString()
-  bulkOrderInitiatorId?: string;
+  notes?: string;
 }

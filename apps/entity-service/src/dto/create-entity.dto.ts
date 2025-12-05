@@ -29,10 +29,13 @@ export class CreateEntityDto {
   @IsNotEmpty()
   category: EntityCategory;
 
-  @ApiProperty({ example: 'owner-uuid' })
+  @ApiPropertyOptional({
+    example: 'owner-uuid',
+    description: 'Optional. Can be set later when creating entity owner user.',
+  })
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  ownerId: string;
+  ownerId?: string;
 
   @ApiPropertyOptional({ example: 'contact@labellerestaurant.rw' })
   @IsOptional()

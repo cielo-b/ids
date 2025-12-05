@@ -5,4 +5,4 @@ metadata:
   namespace: billme-platform
 data:
   REDIS_HOST: redis-service
-  REDIS_PORT: "6379"
+  REDIS_PORT: "6370"

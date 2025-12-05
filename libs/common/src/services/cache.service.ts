@@ -14,7 +14,7 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
   constructor(private configService: ConfigService) {
     this.client = new Redis({
       host: this.configService.get('REDIS_HOST', 'localhost'),
-      port: this.configService.get('REDIS_PORT', 6379),
+      port: this.configService.get('REDIS_PORT', 6370),
       retryStrategy: (times) => {
         const delay = Math.min(times * 50, 2000);
         return delay;

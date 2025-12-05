@@ -1,6 +1,15 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { PassportModule } from '@nestjs/passport';
+import { JwtModule } from '@nestjs/jwt';
+import { HttpModule } from '@nestjs/axios';
+import {
+  CacheModule,
+  JwtStrategy,
+  EventModule,
+  HealthModule,
+} from '@app/common';
 import { OrderController } from './order.controller';
 import { OrderService } from './order.service';
 import { Order } from './entities/order.entity';
@@ -12,6 +21,20 @@ import { OrderItem } from './entities/order-item.entity';
       isGlobal: true,
       envFilePath: '.env',
     }),
+    PassportModule.register({ defaultStrategy: 'jwt' }),
+    JwtModule.registerAsync({
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => ({
+        secret: configService.get('JWT_SECRET', 'your-secret-key'),
+        signOptions: {
+          expiresIn: configService.get('JWT_EXPIRATION', '24h'),
+        },
+      }),
+    }),
+    HttpModule,
+    CacheModule,
+    EventModule,
+    HealthModule,
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => ({
@@ -29,7 +52,7 @@ import { OrderItem } from './entities/order-item.entity';
     TypeOrmModule.forFeature([Order, OrderItem]),
   ],
   controllers: [OrderController],
-  providers: [OrderService],
+  providers: [OrderService, JwtStrategy],
   exports: [OrderService],
 })
 export class OrderModule {}

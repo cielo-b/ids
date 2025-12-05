@@ -3,14 +3,28 @@ import {
   NotFoundException,
   ConflictException,
   BadRequestException,
+  ForbiddenException,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository, ILike } from "typeorm";
+import { HttpService } from "@nestjs/axios";
+import { ConfigService } from "@nestjs/config";
+import { firstValueFrom } from "rxjs";
 import { User } from "./entities/user.entity";
 import { CreateUserDto } from "./dto/create-user.dto";
 import { UpdateUserDto } from "./dto/update-user.dto";
 import { QueryUserDto } from "./dto/query-user.dto";
-import { ResponseUtil, CacheService } from "@app/common";
+import {
+  ResponseUtil,
+  CacheService,
+  UserRole,
+  JwtPayload,
+  JwtPayloadWithRole,
+  QueryFilterUtil,
+  EmployeeTypeUtil,
+  EmployeeType,
+  EntityCategory,
+} from "@app/common";
 
 @Injectable()
 export class UserService {
@@ -20,10 +34,17 @@ export class UserService {
   constructor(
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
-    private cacheService: CacheService
+    private cacheService: CacheService,
+    private httpService: HttpService,
+    private configService: ConfigService
   ) {}
 
-  async create(createUserDto: CreateUserDto) {
+  async create(createUserDto: CreateUserDto, currentUser?: JwtPayloadWithRole) {
+    // Validate role-based user creation (skip validation for internal calls)
+    if (currentUser) {
+      await this.validateUserCreation(createUserDto, currentUser);
+    }
+
     const existingUserByEmail = await this.userRepository.findOne({
       where: { email: createUserDto.email },
     });
@@ -40,8 +61,156 @@ export class UserService {
       throw new ConflictException("User with this phone number already exists");
     }
 
+    // Ensure entityId is set based on current user's context (only if authenticated)
+    if (currentUser && currentUser.role === UserRole.ENTITY_OWNER) {
+      if (!createUserDto.entityId) {
+        createUserDto.entityId = currentUser.entityId;
+      } else if (createUserDto.entityId !== currentUser.entityId) {
+        throw new ForbiddenException("Cannot create users for other entities");
+      }
+    }
+
     const user = this.userRepository.create(createUserDto);
     const savedUser = await this.userRepository.save(user);
+
+    // If creating entity owner, update entity's ownerId
+    if (savedUser.role === UserRole.ENTITY_OWNER && savedUser.entityId) {
+      const entityServiceUrl = this.configService.get(
+        "ENTITY_SERVICE_URL",
+        "http://entity-service:3003"
+      );
+      try {
+        await firstValueFrom(
+          this.httpService.patch(
+            `${entityServiceUrl}/api/v1/entities/${savedUser.entityId}`,
+            { ownerId: savedUser.id }
+          )
+        );
+      } catch (error) {
+        console.error("Failed to update entity ownerId:", error.message);
+        // Don't fail user creation if entity update fails
+      }
+    }
+
+    // If creating manager, automatically create manager record
+    if (savedUser.role === UserRole.MANAGER && savedUser.entityId) {
+      const managerServiceUrl = this.configService.get(
+        "MANAGER_SERVICE_URL",
+        "http://manager-service:3005"
+      );
+      try {
+        // Get default branch if branchId not provided
+        let branchId = createUserDto.branchId;
+        if (!branchId) {
+          const entityServiceUrl = this.configService.get(
+            "ENTITY_SERVICE_URL",
+            "http://entity-service:3003"
+          );
+          const branchesResponse = await firstValueFrom(
+            this.httpService.get(
+              `${entityServiceUrl}/api/v1/entities/${savedUser.entityId}/branches`
+            )
+          );
+          const branches = branchesResponse.data.data;
+          if (branches && branches.length > 0) {
+            branchId = branches[0].id; // Use first branch (default branch)
+          }
+        }
+
+        await firstValueFrom(
+          this.httpService.post(`${managerServiceUrl}/api/v1/managers`, {
+            userId: savedUser.id,
+            entityId: savedUser.entityId,
+            branchId: branchId,
+            position: createUserDto.position || "Manager",
+          })
+        );
+      } catch (error) {
+        console.error("Failed to create manager record:", error.message);
+        // Don't fail user creation if manager creation fails
+      }
+    }
+
+    // If creating employee, automatically create employee record
+    if (savedUser.role === UserRole.EMPLOYEE && savedUser.entityId) {
+      const employeeServiceUrl = this.configService.get(
+        "EMPLOYEE_SERVICE_URL",
+        "http://employee-service:3006"
+      );
+      try {
+        // Get entity to determine category and default employee type
+        const entityServiceUrl = this.configService.get(
+          "ENTITY_SERVICE_URL",
+          "http://entity-service:3003"
+        );
+        const entityResponse = await firstValueFrom(
+          this.httpService.get(
+            `${entityServiceUrl}/api/v1/entities/${savedUser.entityId}`
+          )
+        );
+        const entity = entityResponse.data.data;
+
+        // Get default branch if branchId not provided
+        let branchId = createUserDto.branchId;
+        if (!branchId) {
+          const branchesResponse = await firstValueFrom(
+            this.httpService.get(
+              `${entityServiceUrl}/api/v1/entities/${savedUser.entityId}/branches`
+            )
+          );
+          const branches = branchesResponse.data.data;
+          if (branches && branches.length > 0) {
+            branchId = branches[0].id; // Use first branch (default branch)
+          }
+        }
+
+        if (!branchId) {
+          throw new BadRequestException(
+            "Branch ID is required for employees. Entity must have at least one branch."
+          );
+        }
+
+        // Determine employee type
+        let employeeType = createUserDto.employeeType;
+        if (!employeeType && entity.category) {
+          employeeType = EmployeeTypeUtil.getDefaultEmployeeType(
+            entity.category as EntityCategory
+          );
+        } else if (!employeeType) {
+          employeeType = EmployeeType.OTHER;
+        }
+
+        // Validate employee type for entity category
+        if (
+          entity.category &&
+          !EmployeeTypeUtil.isValidEmployeeTypeForCategory(
+            employeeType,
+            entity.category as EntityCategory
+          )
+        ) {
+          console.warn(
+            `Employee type ${employeeType} may not be appropriate for entity category ${entity.category}`
+          );
+        }
+
+        await firstValueFrom(
+          this.httpService.post(`${employeeServiceUrl}/api/v1/employees`, {
+            userId: savedUser.id,
+            entityId: savedUser.entityId,
+            branchId: branchId,
+            position: createUserDto.position || employeeType,
+            employeeType: employeeType,
+            status: "AVAILABLE",
+          })
+        );
+      } catch (error) {
+        if (error instanceof BadRequestException) {
+          throw error;
+        }
+        console.error("Failed to create employee record:", error.message);
+        // Don't fail user creation if employee creation fails
+      }
+    }
 
     // Cache the new user
     await this.cacheService.set(
@@ -55,12 +224,115 @@ export class UserService {
     return ResponseUtil.success(savedUser, "User created successfully");
   }
 
-  async findAll(query: QueryUserDto) {
+  /**
+   * Validate user creation based on role hierarchy
+   */
+  private async validateUserCreation(
+    createUserDto: CreateUserDto,
+    currentUser?: JwtPayloadWithRole
+  ): Promise<void> {
+    // Superadmin workflow
+    if (currentUser.role === UserRole.SUPER_ADMIN) {
+      // Superadmin creating entity owner - must provide entityId, entity may not have owner yet
+      if (createUserDto.role === UserRole.ENTITY_OWNER) {
+        if (!createUserDto.entityId) {
+          throw new BadRequestException(
+            "Entity ID is required when creating an entity owner"
+          );
+        }
+        // Verify entity exists
+        const entityServiceUrl = this.configService.get(
+          "ENTITY_SERVICE_URL",
+          "http://entity-service:3003"
+        );
+        try {
+          const entityResponse = await firstValueFrom(
+            this.httpService.get(
+              `${entityServiceUrl}/api/v1/entities/${createUserDto.entityId}`
+            )
+          );
+          const entity = entityResponse.data.data;
+          // Check if entity already has an owner
+          if (entity.ownerId) {
+            throw new BadRequestException(
+              "Entity already has an owner. Cannot assign another owner."
+            );
+          }
+        } catch (error) {
+          if (error.response?.status === 404) {
+            throw new NotFoundException("Entity not found");
+          }
+          if (error instanceof BadRequestException) {
+            throw error;
+          }
+          throw error;
+        }
+        return;
+      }
+
+      // Superadmin creating other user types - entity must have an owner
+      if (createUserDto.entityId) {
+        const entityServiceUrl = this.configService.get(
+          "ENTITY_SERVICE_URL",
+          "http://entity-service:3003"
+        );
+        try {
+          const entityResponse = await firstValueFrom(
+            this.httpService.get(
+              `${entityServiceUrl}/api/v1/entities/${createUserDto.entityId}`
+            )
+          );
+          const entity = entityResponse.data.data;
+          if (!entity.ownerId) {
+            throw new BadRequestException(
+              "Cannot create non-owner users for an entity without an owner. Please create an entity owner first."
+            );
+          }
+        } catch (error) {
+          if (error.response?.status === 404) {
+            throw new NotFoundException("Entity not found");
+          }
+          if (error instanceof BadRequestException) {
+            throw error;
+          }
+          throw error;
+        }
+      } else {
+        throw new BadRequestException(
+          "Entity ID is required when creating users"
+        );
+      }
+      return;
+    }
+
+    // Entity owners can create managers and employees for their entity
+    if (currentUser.role === UserRole.ENTITY_OWNER) {
+      if (
+        createUserDto.role !== UserRole.MANAGER &&
+        createUserDto.role !== UserRole.EMPLOYEE
+      ) {
+        throw new ForbiddenException(
+          "Entity owners can only create managers and employees"
+        );
+      }
+      if (!currentUser.entityId) {
+        throw new ForbiddenException(
+          "Entity owner must be associated with an entity"
+        );
+      }
+      return;
+    }
+
+    // Managers and employees cannot create users
+    throw new ForbiddenException("You do not have permission to create users");
+  }
+
+  async findAll(query: QueryUserDto, currentUser?: JwtPayloadWithRole) {
     const { page, limit, role, entityId, search } = query;
     const skip = (page - 1) * limit;
 
-    // Generate cache key based on query parameters
-    const cacheKey = `user:list:${page}:${limit}:${role || ""}:${entityId || ""}:${search || ""}`;
+    // Generate cache key based on query parameters and user context
+    const cacheKey = `user:list:${page}:${limit}:${role || ""}:${entityId || ""}:${search || ""}:${currentUser?.role || ""}:${currentUser?.entityId || ""}`;
     const cached = await this.cacheService.get<any>(cacheKey);
 
     if (cached) {
@@ -68,6 +340,25 @@ export class UserService {
     }
 
     const queryBuilder = this.userRepository.createQueryBuilder("user");
+
+    // Apply data isolation based on user role
+    if (currentUser) {
+      if (currentUser.role === UserRole.ENTITY_OWNER) {
+        // Entity owners can only see users in their entity
+        queryBuilder.andWhere("user.entityId = :entityId", {
+          entityId: currentUser.entityId,
+        });
+      } else if (
+        currentUser.role === UserRole.MANAGER ||
+        currentUser.role === UserRole.EMPLOYEE
+      ) {
+        // Managers and employees can only see users in their entity
+        queryBuilder.andWhere("user.entityId = :entityId", {
+          entityId: currentUser.entityId,
+        });
+      }
+      // Superadmin can see all users (no filter)
+    }
 
     if (role) {
       queryBuilder.andWhere("user.role = :role", { role });
@@ -296,7 +587,17 @@ export class UserService {
     return ResponseUtil.success(null, "2FA disabled successfully");
   }
 
-  async getUsersByEntity(entityId: string) {
+  async getUsersByEntity(entityId: string, currentUser?: JwtPayloadWithRole) {
+    // Check access permissions
+    if (
+      currentUser &&
+      !QueryFilterUtil.canAccessEntity(currentUser, entityId)
+    ) {
+      throw new ForbiddenException(
+        "Access denied: Cannot access users from another entity"
+      );
+    }
+
     const cacheKey = `user:entity:${entityId}`;
     let users = await this.cacheService.get<User[]>(cacheKey);
 

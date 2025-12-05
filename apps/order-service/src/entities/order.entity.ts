@@ -12,9 +12,10 @@ import { OrderItem } from './order-item.entity';
 
 @Entity('orders')
 @Index(['entityId'])
-@Index(['customerId'])
-@Index(['employeeId'])
+@Index(['branchId'])
+@Index(['code'])
 @Index(['status'])
+@Index(['assignment'])
 export class Order {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -22,26 +23,49 @@ export class Order {
   @Column({ unique: true })
   orderNumber: string;
 
+  @Column({ unique: true })
+  code: string; // Order code like "DI104"
+
   @Column()
   entityId: string;
 
   @Column({ nullable: true })
   branchId?: string;
 
-  @Column()
-  customerId: string;
+  @Column({ nullable: true })
+  branchName?: string;
 
-  @Column()
-  employeeId: string;
+  @Column({ type: 'jsonb' })
+  customer: {
+    name: string;
+    phoneNumber?: string;
+    email?: string;
+  };
+
+  @Column({ type: 'jsonb' })
+  assignment: {
+    createdByUserId: string;
+    createdByRole: string;
+    assignedEmployeeId?: string;
+    assignedEmployeeName?: string;
+    branchId?: string;
+    branchName?: string;
+  };
 
   @Column({ nullable: true })
-  tableNumber?: string;
+  tableId?: string;
+
+  @Column({ nullable: true })
+  tableName?: string;
 
   @Column({ nullable: true })
   stationNumber?: string;
 
   @Column({ type: 'enum', enum: OrderStatus, default: OrderStatus.INCOMING })
   status: OrderStatus;
+
+  @Column({ type: 'int', default: 0 })
+  progress: number; // 0-100 progress percentage
 
   @OneToMany(() => OrderItem, (orderItem) => orderItem.order, {
     cascade: true,
@@ -94,7 +118,15 @@ export class Order {
   promotionId?: string;
 
   @Column({ type: 'text', nullable: true })
-  specialInstructions?: string;
+  notes?: string;
+
+  @Column({ type: 'jsonb', nullable: true })
+  timeline?: Array<{
+    status: OrderStatus;
+    timestamp: Date;
+    userId?: string;
+    notes?: string;
+  }>;
 
   @Column({ type: 'timestamp', nullable: true })
   acceptedAt?: Date;
